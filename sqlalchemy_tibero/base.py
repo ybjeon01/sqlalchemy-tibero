@@ -1179,7 +1179,8 @@ class TiberoDialect(default.DefaultDialect):
                 % (", ".join(["'%s'" % ts for ts in self.exclude_tablespaces]))
             )
         sql_str += (
-            "OWNER = :owner " "AND " "AND DURATION IS NULL"
+            "OWNER = :owner "
+            "AND DURATION IS NULL"
         )
 
         cursor = connection.execute(sql.text(sql_str), dict(owner=schema))

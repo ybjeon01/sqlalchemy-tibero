@@ -958,7 +958,7 @@ class TiberoDialect(default.DefaultDialect):
         optimize_limits=False,
         use_binds_for_limits=None,
         use_nchar_for_unicode=False,
-        exclude_tablespaces=("SYSTEM", "SYSAUX"),
+        exclude_tablespaces=("SYSTEM", "SYSSUB"),
         **kwargs
     ):
         default.DefaultDialect.__init__(self, **kwargs)
@@ -1018,16 +1018,9 @@ class TiberoDialect(default.DefaultDialect):
 
         if not schema:
             schema = self.default_schema_name
-        cursor = connection.execute(
-            sql.text(
-                "SELECT table_name FROM all_tables "
-                "WHERE table_name = :name AND owner = :schema_name"
-            ),
-            dict(
-                name=self.denormalize_name(table_name),
-                schema_name=self.denormalize_name(schema),
-            ),
-        )
+        text = "SELECT table_name FROM all_tables WHERE table_name = :name AND owner = :schema_name"
+        params = dict(name=self.denormalize_name(table_name), schema_name=self.denormalize_name(schema),)
+        cursor = connection.execute(sql.text(text), params)
         return cursor.first() is not None
 
     def has_sequence(self, connection, sequence_name, schema=None):
@@ -1050,7 +1043,6 @@ class TiberoDialect(default.DefaultDialect):
         s = "SELECT sys_context('userenv','current_schema') FROM dual"
         cursor = connection.execute(sql.text(s))
         return cursor.fetchone()[0]
-        #return "TIBERO"
 
     def _resolve_synonym(
         self,
@@ -1184,7 +1176,7 @@ class TiberoDialect(default.DefaultDialect):
         )
 
         cursor = connection.execute(sql.text(sql_str), dict(owner=schema))
-        return [self.normalize_name(row[0]) for row in cursor]
+        return [self.denormalize_name(row[0]) for row in cursor]
 
     @reflection.cache
     def get_temp_table_names(self, connection, **kw):
@@ -1269,28 +1261,18 @@ class TiberoDialect(default.DefaultDialect):
 
         row = result.first()
         if row:
-            if "compression" in row._fields and enabled.get(
-                row.compression, False
-            ):
-                if "compress_for" in row._fields:
-                    options["tibero_compress"] = row.compress_for
-                else:
-                    options["tibero_compress"] = True
+            if enabled.get(row.compression, False):
+                options["tibero_compress"] = row.compress_for
 
         return options
 
     @reflection.cache
     def get_columns(self, connection, table_name, schema=None, **kw):
         """
-
         kw arguments can be:
-
             tibero_resolve_synonyms
-
             dblink
-
         """
-
         resolve_synonyms = kw.get("tibero_resolve_synonyms", False)
         dblink = kw.get("dblink", "")
         info_cache = kw.get("info_cache")
@@ -1322,7 +1304,7 @@ class TiberoDialect(default.DefaultDialect):
                 col.nullable,
                 col.data_default,
                 com.comments,
-                col.virtual_column,
+                col.virtual_column
                 %(identity_cols)s
             FROM all_tab_cols%(dblink)s col
             LEFT JOIN all_col_comments%(dblink)s com
@@ -1330,7 +1312,7 @@ class TiberoDialect(default.DefaultDialect):
             AND col.column_name = com.column_name
             AND col.owner = com.owner
             WHERE col.table_name = :table_name
-            AND col.hidden_column = 'NO'
+            AND col.hidden_column = 'N'
         """
         if schema is not None:
             params["owner"] = schema

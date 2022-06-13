@@ -51,5 +51,5 @@ __all__ = (
 
 __version__ = "1.0.0"
 
-_registry.register("tibero.pyodbc", "sqlalchemy_tibero.pyodbc", "TiberoDialect_pyodbc")
+#_registry.register("tibero.pyodbc", "sqlalchemy_tibero.pyodbc", "TiberoDialect_pyodbc")
 _registry.register("tibero", "sqlalchemy_tibero.pyodbc", "TiberoDialect_pyodbc")

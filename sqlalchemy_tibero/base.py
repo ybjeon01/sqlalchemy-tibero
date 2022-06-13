@@ -13,6 +13,7 @@ Support for the TmaxSoft Tibero database.
 import warnings
 from itertools import groupby
 import re
+import os
 
 from sqlalchemy import types, exc, pool, Computed, sql, util
 from sqlalchemy import schema as sa_schema
@@ -181,9 +182,12 @@ colspecs = {
 ischema_names = {
     "VARCHAR2": VARCHAR,
     "NVARCHAR2": NVARCHAR,
+    "VARCHAR": VARCHAR,
+    "NVARCHAR": NVARCHAR,
     "CHAR": CHAR,
     "NCHAR": NCHAR,
     "DATE": DATE,
+    "DATETIME": DATE,
     "NUMBER": NUMBER,
     "BLOB": BLOB,
     "BFILE": BFILE,
@@ -888,12 +892,19 @@ class TiberoExecutionContext(default.DefaultExecutionContext):
 
 class TiberoDialect(default.DefaultDialect):
     name = "tibero"
-    driver = "Tibero"
+    #driver = "Tibero"
+
     supports_statement_cache = True
     supports_alter = True
     supports_unicode_statements = False
     supports_unicode_binds = False
     max_identifier_length = 128
+
+    insert_returning = True
+    update_returning = True
+    delete_returning = True
+
+    div_is_floordiv = False
 
     supports_simple_order_by_label = False
     cte_follows_insert = True
@@ -912,6 +923,7 @@ class TiberoDialect(default.DefaultDialect):
     supports_default_values = False
     supports_default_metavalue = True
     supports_empty_insert = False
+    supports_identity_columns = True
 
     statement_compiler = TiberoCompiler
     ddl_compiler = TiberoDDLCompiler
@@ -966,6 +978,14 @@ class TiberoDialect(default.DefaultDialect):
         self.use_ansi = use_ansi
         self.optimize_limits = optimize_limits
         self.exclude_tablespaces = exclude_tablespaces
+        os.environ.update([
+            # Tibero takes client-side character set encoding from the environment.
+            ('TB_NLS_LANG', 'UTF8'),
+            # This prevents unicode from getting mangled by getting encoded into the
+            # potentially non-unicode database character set.
+            ('TBCLI_WCHAR_TYPE', 'UCS2'),
+            #('ORA_NCHAR_LITERAL_REPLACE', 'TRUE'),
+        ])
 
     def initialize(self, connection):
         super(TiberoDialect, self).initialize(connection)
@@ -1291,7 +1311,7 @@ class TiberoDialect(default.DefaultDialect):
         else:
             char_length_col = "data_length"
 
-        identity_cols = "NULL as default_on_null, NULL as identity_options"
+        identity_cols = ", NULL as default_on_null, NULL as identity_options"
 
         params = {"table_name": table_name}
         text = """
@@ -1348,7 +1368,7 @@ class TiberoDialect(default.DefaultDialect):
             elif coltype == "FLOAT":
                 # TODO: support "precision" here as "binary_precision"
                 coltype = FLOAT()
-            elif coltype in ("VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR"):
+            elif coltype in ("VARCHAR", "NVARCHAR", "VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR"):
                 coltype = self.ischema_names.get(coltype)(length)
             elif "WITH TIME ZONE" in coltype:
                 coltype = TIMESTAMP(timezone=True)

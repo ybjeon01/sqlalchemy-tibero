@@ -3,6 +3,5 @@
 /build/
 /dist/
 /test/__pycache__/
-/sqlalchemy_access/__pycache__/
-/sqlalchemy_access.egg-info/
+/sqlalchemy_tibero.egg-info/
 /venv/

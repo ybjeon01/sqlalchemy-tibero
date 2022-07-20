@@ -303,7 +303,7 @@ class TiberoTypeCompiler(compiler.GenericTypeCompiler):
             return varchar % {"length": type_.length, "two": num, "n": n}
 
     def visit_text(self, type_, **kw):
-        return self.visit_CLOB(type_, **kw)
+        return self.visit_NCLOB(type_, **kw)
 
     def visit_unicode_text(self, type_, **kw):
         if self.dialect._use_nchar_for_unicode:
@@ -894,6 +894,7 @@ class TiberoDialect(default.DefaultDialect):
     name = "tibero"
     #driver = "Tibero"
 
+    bind_typing = 2
     supports_statement_cache = True
     supports_alter = True
     supports_unicode_statements = False
@@ -956,7 +957,7 @@ class TiberoDialect(default.DefaultDialect):
 
     def create_connect_args(self, url):
         opts = url.translate_connect_args()
-        print("XXXX" + url + "XXXX")
+        #print("XXXX" + url + "XXXX")
         connectors = ["Driver=Tibero 6 ODBC Driver"]
         user = opts.get("username", None)
         if user:
@@ -971,6 +972,11 @@ class TiberoDialect(default.DefaultDialect):
         use_binds_for_limits=None,
         use_nchar_for_unicode=False,
         exclude_tablespaces=("SYSTEM", "SYSSUB"),
+        auto_convert_lobs=True,
+        coerce_to_decimal=True,
+        arraysize=50,
+        encoding_errors=None,
+        threaded=None,
         **kwargs
     ):
         default.DefaultDialect.__init__(self, **kwargs)
@@ -986,9 +992,28 @@ class TiberoDialect(default.DefaultDialect):
             ('TBCLI_WCHAR_TYPE', 'UCS2'),
             #('ORA_NCHAR_LITERAL_REPLACE', 'TRUE'),
         ])
+        self.arraysize = arraysize
+        self.encoding_errors = encoding_errors
+        if encoding_errors:
+            self._cursor_var_unicode_kwargs = {
+                "encodingErrors": encoding_errors
+            }
+        if threaded is not None:
+            self._cx_oracle_threaded = threaded
+        self.auto_convert_lobs = auto_convert_lobs
+        self.coerce_to_decimal = coerce_to_decimal
+        self.include_set_input_sizes = {
+            NCLOB,
+            CLOB,
+            NCHAR,
+            BLOB,
+            TIMESTAMP,
+        }
+        self._paramval = lambda value: value.getvalue()
 
     def initialize(self, connection):
         super(TiberoDialect, self).initialize(connection)
+        connection.maxwrite=32767
 
     @property
     def _supports_table_compression(self):

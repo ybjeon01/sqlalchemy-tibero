@@ -1533,7 +1533,7 @@ class TiberoDialect(default.DefaultDialect):
         params = {"table_name": table_name}
         text = (
             "SELECT a.index_name, a.column_name, "
-            "\nb.index_type, b.uniqueness, b.compression, b.prefix_length "
+            "\nb.index_type, b.uniqueness, 'DISABLED' as compression, 1 as prefix_length "
             "\nFROM ALL_IND_COLUMNS%(dblink)s a, "
             "\nALL_INDEXES%(dblink)s b "
             "\nWHERE "

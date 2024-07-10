@@ -39,7 +39,10 @@ setup(
     },
     packages=find_packages(include=["sqlalchemy_tibero"]),
     include_package_data=True,
-    install_requires=["SQLAlchemy", "pyodbc"],
+    install_requires=[
+        "SQLAlchemy<2.0",
+        "pyodbc",
+    ],
     zip_safe=False,
     entry_points={
         "sqlalchemy.dialects": [

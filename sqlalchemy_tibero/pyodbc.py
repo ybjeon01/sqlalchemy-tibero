@@ -38,10 +38,6 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     supports_statement_cache = True
     bind_typing = 2
 
-    @classmethod
-    def dbapi(cls):
-        return PyODBCConnector.dbapi()
-
     def __init__(
         self,
         auto_convert_lobs=True,

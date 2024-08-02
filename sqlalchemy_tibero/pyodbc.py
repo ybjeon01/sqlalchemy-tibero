@@ -15,14 +15,21 @@ Connecting
 Examples of pyodbc connection string URLs:
 * ``tibero+pyodbc://mydsn`` - connects using the specified DSN named ``mydsn``.
 """
-from .base import TiberoExecutionContext, TiberoDialect, NCLOB
+import os
+
+from .base import TiberoExecutionContext, TiberoDialect
 from sqlalchemy.connectors.pyodbc import PyODBCConnector
-from sqlalchemy import types as sqltypes, util
-from sqlalchemy.types import BLOB, CHAR, CLOB, FLOAT, INTEGER, NCHAR, NVARCHAR, TIMESTAMP, VARCHAR
-import sqlalchemy
+from sqlalchemy.types import BLOB
+from sqlalchemy.types import CLOB
+from sqlalchemy.types import NCHAR
+from sqlalchemy.types import TIMESTAMP
+
+from .types import NCLOB
+
 
 class TiberoExecutionContext_pyodbc(TiberoExecutionContext):
     pass
+
 
 class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     pyodbc_driver_name = "Tibero"
@@ -44,6 +51,14 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         threaded=None,
         **kwargs,
     ):
+        os.environ.update([
+            # Tibero takes client-side character set encoding from the environment.
+            ('TB_NLS_LANG', 'UTF8'),
+            # This prevents unicode from getting mangled by getting encoded into the
+            # potentially non-unicode database character set.
+            ('TBCLI_WCHAR_TYPE', 'UCS2'),
+        ])
+
         TiberoDialect.__init__(self, **kwargs)
         self.arraysize = arraysize
         self.encoding_errors = encoding_errors
@@ -62,8 +77,3 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             BLOB,
             TIMESTAMP,
         }
-
-        self._paramval = lambda value: value.getvalue()
-
-
-

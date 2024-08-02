@@ -40,7 +40,7 @@ setup(
     packages=find_packages(include=["sqlalchemy_tibero"]),
     include_package_data=True,
     install_requires=[
-        "SQLAlchemy<2.0",
+        "SQLAlchemy",
         "pyodbc",
     ],
     zip_safe=False,

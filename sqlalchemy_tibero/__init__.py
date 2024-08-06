@@ -59,3 +59,15 @@ __all__ = (
     "ROWID",
     "REAL",
 )
+
+__version__ = "2.0.0"
+
+# TODO: 내가 (전영배)가 알기로는 setup.py에 다음의 라인을 추가하면 자동으로 register되는 것으로 알고 있습니다.
+#         entry_points = {
+#             "sqlalchemy.dialects": [
+#                 "tibero.pyodbc = sqlalchemy_tibero.pyodbc:TiberoDialect_pyodbc",
+#             ]
+#         },
+#       하지만 자동으로 등록이 되지 않아 아래왜 같이 트릭을 썼습니다. 자세히 이유 분석 및 해결이 필요합니다.
+from sqlalchemy.dialects import registry as _registry
+_registry.register("tibero", "sqlalchemy_tibero.pyodbc", "TiberoDialect_pyodbc")

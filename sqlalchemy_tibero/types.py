@@ -6,9 +6,13 @@ from typing import TYPE_CHECKING
 from sqlalchemy import exc
 from sqlalchemy.sql import sqltypes
 
-if TYPE_CHECKING:
-    from sqlalchemy.engine.interfaces import Dialect
-    from sqlalchemy.sql.type_api import _LiteralProcessorType
+# TODO: 왜 아래 3줄이 문제가 되는지 확인하기
+# if TYPE_CHECKING:
+#     from sqlalchemy.engine.interfaces import Dialect
+#     from sqlalchemy.sql.type_api import _LiteralProcessorType
+
+from sqlalchemy.engine.interfaces import Dialect
+from sqlalchemy.sql.type_api import _LiteralProcessorType
 
 
 # TODO: 오라클에서는 sqltypes.BINARY 대신 sqltypes._Binary 클래스를 상속받았습니다.
@@ -74,10 +78,10 @@ class FLOAT(sqltypes.FLOAT):
     __visit_name__ = "FLOAT"
 
     def __init__(
-        self,
-        binary_precision=None,
-        asdecimal=False,
-        decimal_return_scale=None,
+            self,
+            binary_precision=None,
+            asdecimal=False,
+            decimal_return_scale=None,
     ):
         r"""
         Construct a FLOAT
@@ -206,7 +210,7 @@ class INTERVAL(sqltypes.NativeForEmulated, sqltypes._AbstractInterval):
 
     @classmethod
     def adapt_emulated_to_native(
-        cls, interval: sqltypes.Interval, **kw  # type: ignore[override]
+            cls, interval: sqltypes.Interval, **kw  # type: ignore[override]
     ):
         return INTERVAL(
             day_precision=interval.day_precision,
@@ -229,7 +233,7 @@ class INTERVAL(sqltypes.NativeForEmulated, sqltypes._AbstractInterval):
         return dt.timedelta
 
     def literal_processor(
-        self, dialect: Dialect
+            self, dialect: Dialect
     ) -> Optional[_LiteralProcessorType[dt.timedelta]]:
         def process(value: dt.timedelta) -> str:
             return f"NUMTODSINTERVAL({value.total_seconds()}, 'SECOND')"

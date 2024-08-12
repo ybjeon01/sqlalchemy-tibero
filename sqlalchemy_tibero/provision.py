@@ -1,4 +1,4 @@
-# dialects/oracle/provision.py
+# dialects/tibero/provision.py
 # Copyright (C) 2005-2024 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
@@ -22,11 +22,10 @@ from sqlalchemy.testing.provision import run_reap_dbs
 from sqlalchemy.testing.provision import set_default_schema_on_connection
 from sqlalchemy.testing.provision import stop_test_class_outside_fixtures
 from sqlalchemy.testing.provision import temp_table_keyword_args
-from sqlalchemy.testing.provision import update_db_opts
 
 
-@create_db.for_db("oracle")
-def _oracle_create_db(cfg, eng, ident):
+@create_db.for_db("tibero")
+def _tibero_create_db(cfg, eng, ident):
     # NOTE: make sure you've run "ALTER DATABASE default tablespace users" or
     # similar, so that the default tablespace is not "system"; reflection will
     # fail otherwise
@@ -44,8 +43,8 @@ def _oracle_create_db(cfg, eng, ident):
         conn.exec_driver_sql("grant create table to %s_ts2" % ident)
 
 
-@configure_follower.for_db("oracle")
-def _oracle_configure_follower(config, ident):
+@configure_follower.for_db("tibero")
+def _tibero_configure_follower(config, ident):
     config.test_schema = "%s_ts1" % ident
     config.test_schema_2 = "%s_ts2" % ident
 
@@ -60,13 +59,13 @@ def _ora_drop_ignore(conn, dbname):
         return False
 
 
-@drop_all_schema_objects_pre_tables.for_db("oracle")
+@drop_all_schema_objects_pre_tables.for_db("tibero")
 def _ora_drop_all_schema_objects_pre_tables(cfg, eng):
     _purge_recyclebin(eng)
     _purge_recyclebin(eng, cfg.test_schema)
 
 
-@drop_all_schema_objects_post_tables.for_db("oracle")
+@drop_all_schema_objects_post_tables.for_db("tibero")
 def _ora_drop_all_schema_objects_post_tables(cfg, eng):
     with eng.begin() as conn:
         for syn in conn.dialect._get_synonyms(conn, None, None, None):
@@ -83,8 +82,8 @@ def _ora_drop_all_schema_objects_post_tables(cfg, eng):
             conn.exec_driver_sql(f"drop table {tmp_table}")
 
 
-@drop_db.for_db("oracle")
-def _oracle_drop_db(cfg, eng, ident):
+@drop_db.for_db("tibero")
+def _tibero_drop_db(cfg, eng, ident):
     with eng.begin() as conn:
         # cx_Oracle seems to occasionally leak open connections when a large
         # suite it run, even if we confirm we have zero references to
@@ -129,7 +128,7 @@ def _purge_recyclebin(eng, schema=None):
             for owner, object_name, type_ in conn.exec_driver_sql(
                 "select owner, object_name,type from "
                 "dba_recyclebin where owner=:schema and type='TABLE'",
-                {"schema": conn.dialect.denormalize_name(schema)},
+                (conn.dialect.denormalize_name(schema),),
             ).all():
                 conn.exec_driver_sql(f'purge {type_} {owner}."{object_name}"')
 
@@ -154,8 +153,8 @@ def _oracle_post_configure_engine(url, engine, follower_ident):
             connection_record.invalidate()
 
 
-@run_reap_dbs.for_db("oracle")
-def _reap_oracle_dbs(url, idents):
+@run_reap_dbs.for_db("tibero")
+def _reap_tibero_dbs(url, idents):
     log.info("db reaper connecting to %r", url)
     eng = create_engine(url)
     with eng.begin() as conn:
@@ -187,34 +186,24 @@ def _reap_oracle_dbs(url, idents):
         )
 
 
-@follower_url_from_main.for_db("oracle")
-def _oracle_follower_url_from_main(url, ident):
+@follower_url_from_main.for_db("tibero")
+def _tibero_follower_url_from_main(url, ident):
     url = sa_url.make_url(url)
     return url.set(username=ident, password="xe")
 
 
-@temp_table_keyword_args.for_db("oracle")
-def _oracle_temp_table_keyword_args(cfg, eng):
+@temp_table_keyword_args.for_db("tibero")
+def _tibero_temp_table_keyword_args(cfg, eng):
     return {
         "prefixes": ["GLOBAL TEMPORARY"],
-        "oracle_on_commit": "PRESERVE ROWS",
+        "tibero_on_commit": "PRESERVE ROWS",
     }
 
 
-@set_default_schema_on_connection.for_db("oracle")
-def _oracle_set_default_schema_on_connection(
+@set_default_schema_on_connection.for_db("tibero")
+def _tibero_set_default_schema_on_connection(
     cfg, dbapi_connection, schema_name
 ):
     cursor = dbapi_connection.cursor()
     cursor.execute("ALTER SESSION SET CURRENT_SCHEMA=%s" % schema_name)
     cursor.close()
-
-
-@update_db_opts.for_db("oracle")
-def _update_db_opts(db_url, db_opts, options):
-    """Set database options (db_opts) for a test database that we created."""
-    if (
-        options.oracledb_thick_mode
-        and sa_url.make_url(db_url).get_driver_name() == "oracledb"
-    ):
-        db_opts["thick_mode"] = True

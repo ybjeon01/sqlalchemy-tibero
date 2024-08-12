@@ -49,4 +49,8 @@ setup(
             "tibero.pyodbc = sqlalchemy_tibero.pyodbc:TiberoDialect_pyodbc",
         ]
     },
+    extras_require={
+        "dev": ["pytest", "flake8"],  # 개발 환경에서 필요한 의존성
+        "docs": ["sphinx"],           # 문서화를 위해 필요한 의존성
+    },
 )

@@ -69,9 +69,14 @@ colspecs = {
 }
 
 # TODO: 여기 있는 모든 타입들이 티베로에서 지원되는지 확인하기
+# Oracle에서 VARCHAR 는 자동으로 VARCHAR2로 변환이 되는데
+# Tibero에서는 VARCHAR2가 자동으로 VARCHAR로 변환이 됩니다.
+# Oracle에서 NVARCHAR 라는 타입은 없으나 NVARCHAR2 라는
+# 타입을 가지고 있습니다. Tibero에서는 VARCHAR2가 자동으로
+# VARCHAR로 변환이 됩니다.
 ischema_names = {
-    "VARCHAR2": sqltypes.VARCHAR,
-    "NVARCHAR2": sqltypes.NVARCHAR,
+    "VARCHAR": sqltypes.VARCHAR,
+    "NVARCHAR": sqltypes.NVARCHAR,
     "CHAR": sqltypes.CHAR,
     "NCHAR": sqltypes.NCHAR,
     "DATE": types.DATE,
@@ -1365,32 +1370,54 @@ class TiberoDialect(default.DefaultDialect):
         return [self.normalize_name(row) for row in result]
 
     @reflection.cache
-    def get_temp_table_names(self, connection, dblink=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link."""
-        schema = self.denormalize_schema_name(self.default_schema_name)
+    def get_temp_table_names(self, connection, **kw):
+        schema = self.denormalize_name(self.default_schema_name)
 
-        query = select(dictionary.all_tables.c.table_name)
+        sql_str = "SELECT table_name FROM all_tables WHERE "
         if self.exclude_tablespaces:
-            query = query.where(
-                func.coalesce(
-                    dictionary.all_tables.c.tablespace_name, "no tablespace"
-                ).not_in(self.exclude_tablespaces)
+            sql_str += (
+                "nvl(tablespace_name, 'no tablespace') "
+                "NOT IN (%s) AND "
+                % (", ".join(["'%s'" % ts for ts in self.exclude_tablespaces]))
             )
-
-        # TODO: iot_name이 왜 조건에 필요한지 모르겠습니다. temp table을 생성할 때
-        #       index organized table로 만들 수 없는 것으로 알고 있습니다.
-        #       temp table를 찾는 조건에 iot_name은 불필요해보입니다.
-        #       또한 duration 칼럼이 아닌 temporary ='Y' 을 사용해도 괜찮아 보입니다.
-        query = query.where(
-            dictionary.all_tables.c.owner == schema,
-            dictionary.all_tables.c.iot_type.is_(null()),
-            dictionary.all_tables.c.duration.is_not(null()),
+        sql_str += (
+            "OWNER = :owner "
+            "AND DURATION IS NOT NULL"
         )
 
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).scalars()
-        return [self.normalize_name(row) for row in result]
+        cursor = connection.execute(sql.text(sql_str), dict(owner=schema))
+        return [self.normalize_name(row[0]) for row in cursor]
+
+    # TODO: 아래 코드는 이상이 없어보이나 다음의 에러를 발생시킵니다. 이유를 찾기 바랍니다.
+    #       (pyodbc.Error) ('ERREX', '[ERREX]  Values are from incompatible
+    #       data types. (-11022) (SQLExecDirectW)')
+    # @reflection.cache
+    # def get_temp_table_names(self, connection, dblink=None, **kw):
+    #     """Supported kw arguments are: ``dblink`` to reflect via a db link."""
+    #     schema = self.denormalize_schema_name(self.default_schema_name)
+    #
+    #     query = select(dictionary.all_tables.c.table_name)
+    #     if self.exclude_tablespaces:
+    #         query = query.where(
+    #             func.coalesce(
+    #                 dictionary.all_tables.c.tablespace_name, "no tablespace"
+    #             ).not_in(self.exclude_tablespaces)
+    #         )
+    #
+    #     # TODO: iot_name이 왜 조건에 필요한지 모르겠습니다. temp table을 생성할 때
+    #     #       index organized table로 만들 수 없는 것으로 알고 있습니다.
+    #     #       temp table를 찾는 조건에 iot_name은 불필요해보입니다.
+    #     #       또한 duration 칼럼이 아닌 temporary ='Y' 을 사용해도 괜찮아 보입니다.
+    #     query = query.where(
+    #         dictionary.all_tables.c.owner == schema,
+    #         dictionary.all_tables.c.iot_type.is_(null()),
+    #         dictionary.all_tables.c.duration.is_not(null()),
+    #     )
+    #
+    #     result = self._execute_reflection(
+    #         connection, query, dblink, returns_long=False
+    #     ).scalars()
+    #     return [self.normalize_name(row) for row in result]
 
     @reflection.cache
     def get_materialized_view_names(
@@ -1418,10 +1445,10 @@ class TiberoDialect(default.DefaultDialect):
         if not schema:
             schema = self.default_schema_name
 
-            query = select(dictionary.all_views.c.view_name).where(
-                dictionary.all_views.c.owner
-                == self.denormalize_schema_name(schema)
-            )
+        query = select(dictionary.all_views.c.view_name).where(
+            dictionary.all_views.c.owner
+            == self.denormalize_schema_name(schema)
+        )
         result = self._execute_reflection(
             connection, query, dblink, returns_long=False
         ).scalars()
@@ -1699,9 +1726,11 @@ class TiberoDialect(default.DefaultDialect):
                 ),
             )
 
+        # Oracle은 hidden_column을 지원하고 값으로는 YES 또는 NO입니다. 반면에
+        # Tibero는 hidden_column을 지원하지 않으면 값으로는 N만 가지는 것 같습니다.
         query = query.where(
             all_cols.c.table_name.in_(bindparam("all_objects")),
-            all_cols.c.hidden_column == "NO",
+            all_cols.c.hidden_column == "N",
             all_cols.c.owner == owner,
         ).order_by(all_cols.c.table_name, all_cols.c.column_id)
         return query
@@ -1784,7 +1813,12 @@ class TiberoDialect(default.DefaultDialect):
                     # non standard precision
                     coltype = types.FLOAT(binary_precision=precision)
 
-            elif coltype in ("VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR"):
+            elif coltype in ("VARCHAR", "NVARCHAR", "CHAR", "NCHAR"):
+                # Oracle에서 VARCHAR 는 자동으로 VARCHAR2로 변환이 되는데
+                # Tibero에서는 VARCHAR2가 자동으로 VARCHAR로 변환이 됩니다.
+                # Oracle에서 NVARCHAR 라는 타입은 없으나 NVARCHAR2 라는
+                # 타입을 가지고 있습니다. Tibero에서는 VARCHAR2가 자동으로
+                # VARCHAR로 변환이 됩니다.
                 char_length = maybe_int(row_dict["char_length"])
                 coltype = self.ischema_names.get(coltype)(char_length)
             elif "WITH TIME ZONE" in coltype:

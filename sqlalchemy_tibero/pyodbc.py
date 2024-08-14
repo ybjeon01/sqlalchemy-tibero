@@ -17,6 +17,7 @@ Examples of pyodbc connection string URLs:
 """
 import os
 
+import pyodbc
 from .base import TiberoExecutionContext, TiberoDialect
 from sqlalchemy.connectors.pyodbc import PyODBCConnector
 from sqlalchemy.types import BLOB
@@ -45,15 +46,18 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         arraysize=50,
         encoding_errors=None,
         threaded=None,
+        char_encoding="UTF-8",
+        wchar_encoding="UTF-8",
         **kwargs,
     ):
-        os.environ.update([
-            # Tibero takes client-side character set encoding from the environment.
-            ('TB_NLS_LANG', 'UTF8'),
-            # This prevents unicode from getting mangled by getting encoded into the
-            # potentially non-unicode database character set.
-            ('TBCLI_WCHAR_TYPE', 'UCS2'),
-        ])
+        self.char_encoding = char_encoding
+        self.wchar_encoding = wchar_encoding
+
+        # This prevents unicode from getting mangled by getting encoded into the
+        # potentially non-unicode database character set.
+        os.environ.setdefault("TBCLI_WCHAR_TYPE", "UCS2")
+        # Tibero takes client-side character set encoding from the environment.
+        os.environ.setdefault("TB_NLS_LANG", "UTF8")
 
         TiberoDialect.__init__(self, **kwargs)
         self.arraysize = arraysize
@@ -73,3 +77,12 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             BLOB,
             TIMESTAMP,
         }
+
+    def initialize(self, connection):
+        pyodbc_conn: pyodbc.Connection = connection.connection.dbapi_connection
+        pyodbc_conn.setdecoding(pyodbc.SQL_CHAR, self.char_encoding)
+        pyodbc_conn.setdecoding(pyodbc.SQL_WCHAR, self.wchar_encoding)
+
+        super().initialize(connection)
+
+

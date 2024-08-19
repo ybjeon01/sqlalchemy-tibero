@@ -16,8 +16,12 @@ Examples of pyodbc connection string URLs:
 * ``tibero+pyodbc://mydsn`` - connects using the specified DSN named ``mydsn``.
 """
 import os
+from typing import cast
 
 import pyodbc
+
+from sqlalchemy.engine import interfaces
+from sqlalchemy.engine.interfaces import DBAPIConnection, IsolationLevel
 from .base import TiberoExecutionContext, TiberoDialect
 from sqlalchemy.connectors.pyodbc import PyODBCConnector
 from sqlalchemy.types import BLOB
@@ -79,10 +83,35 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         }
 
     def initialize(self, connection):
-        pyodbc_conn: pyodbc.Connection = connection.connection.dbapi_connection
+        pyodbc_conn = cast(pyodbc.Connection, connection.connection.dbapi_connection)
         pyodbc_conn.setdecoding(pyodbc.SQL_CHAR, self.char_encoding)
         pyodbc_conn.setdecoding(pyodbc.SQL_WCHAR, self.wchar_encoding)
 
         super().initialize(connection)
 
+    def get_isolation_level(
+        self, dbapi_connection: DBAPIConnection
+    ) -> IsolationLevel:
+        # TODO: 네트워크통해서 현재 isolation level을 가져오기
+        #       티베로 jdbc 코드에서는 set_isolation_level() 메서드를 사용함으로서
+        #       get_isolation_level() 메서드를 구현하는데 내가 (전영배)가 보기에는 올바른
+        #       방법이 아닙니다. 사용자가 get_isolation_level()를 통해 현재
+        #       isolation level을 볼려고 하는데 set_isolation_level을 통해 상태가 변경되면
+        #       예상치 못한 결과가 발생할 수 있습니다.
+        return "READ COMMITTED"
 
+    def set_isolation_level(
+        self,
+        dbapi_connection: interfaces.DBAPIConnection,
+        level: IsolationLevel,
+    ) -> None:
+        if level == "AUTOCOMMIT":
+            dbapi_connection.autocommit = True
+
+        supported_levels = self.get_isolation_level_values(dbapi_connection)
+        assert level in supported_levels, f"{level} is an unsupported isolation level"
+
+        dbapi_connection.autocommit = False
+        cursor = dbapi_connection.cursor()
+        cursor.execute(f"ALTER SESSION SET ISOLATION_LEVEL={level}")
+        cursor.commit()

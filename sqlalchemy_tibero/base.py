@@ -744,8 +744,13 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         text = "CREATE "
         if index.unique:
             text += "UNIQUE "
-        if index.dialect_options["tibero"]["bitmap"]:
+        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
+        # if index.dialect_options["tibero"]["bitmap"]:
+        #     text += "BITMAP "
+
+        if index.dialect_options["oracle"]["bitmap"]:
             text += "BITMAP "
+
         text += "INDEX %s ON %s (%s)" % (
             self._prepared_index_name(index, include_schema=True),
             preparer.format_table(index.table, use_schema=True),
@@ -756,18 +761,31 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
                 for expr in index.expressions
             ),
         )
-        if index.dialect_options["tibero"]["compress"] is not False:
-            if index.dialect_options["tibero"]["compress"] is True:
+
+        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
+        # if index.dialect_options["tibero"]["compress"] is not False:
+        #     if index.dialect_options["tibero"]["compress"] is True:
+        #         text += " COMPRESS"
+        #     else:
+        #         text += " COMPRESS %d" % (
+        #             index.dialect_options["tibero"]["compress"]
+        #         )
+        if index.dialect_options["oracle"]["compress"] is not False:
+            if index.dialect_options["oracle"]["compress"] is True:
                 text += " COMPRESS"
             else:
                 text += " COMPRESS %d" % (
-                    index.dialect_options["tibero"]["compress"]
+                    index.dialect_options["oracle"]["compress"]
                 )
+
         return text
 
     def post_create_table(self, table):
         table_opts = []
-        opts = table.dialect_options["tibero"]
+
+        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
+        # opts = table.dialect_options["tibero"]
+        opts = table.dialect_options["oracle"]
 
         if opts["on_commit"]:
             on_commit_options = opts["on_commit"].replace("_", " ").upper()
@@ -786,9 +804,15 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         text = text.replace("NO MINVALUE", "NOMINVALUE")
         text = text.replace("NO MAXVALUE", "NOMAXVALUE")
         text = text.replace("NO CYCLE", "NOCYCLE")
-        options = identity_options.dialect_options["tibero"]
-        if options.get("order") is not None:
-            text += " ORDER" if options["order"] else " NOORDER"
+        # TODO: 이 코드는 sqlalchemy 2.1에서 부터 지원됩니다. sqlalchemy 2.1 버전을
+        #       위해 코멘트를 나중에 해제하십시오.
+        # options = identity_options.dialect_options["tibero"]
+        # if options.get("order") is not None:
+        #     text += " ORDER" if options["order"] else " NOORDER"
+
+        if identity_options.order is not None:
+            text += " ORDER" if identity_options.order else " NOORDER"
+
         return text.strip()
 
     def visit_computed_column(self, generated, **kw):
@@ -810,8 +834,13 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         else:
             kind = "ALWAYS" if identity.always else "BY DEFAULT"
         text = "GENERATED %s" % kind
-        if identity.dialect_options["tibero"].get("on_null"):
+        # TODO: 이 코드는 sqlalchemy 2.1에서 부터 지원됩니다. sqlalchemy 2.1 버전을
+        #       위해 코멘트를 나중에 해제하십시오.
+        # if identity.dialect_options["tibero"].get("on_null"):
+        #     text += " ON NULL"
+        if identity.on_null:
             text += " ON NULL"
+
         text += " AS IDENTITY"
         options = self.get_identity_options(identity)
         if options:
@@ -857,7 +886,7 @@ class TiberoExecutionContext(default.DefaultExecutionContext):
 
 
 class TiberoDialect(default.DefaultDialect):
-    name = "tibero"
+    name = "oracle"
     supports_statement_cache = True
     supports_alter = True
     max_identifier_length = 128
@@ -1666,6 +1695,7 @@ class TiberoDialect(default.DefaultDialect):
 
         # 오라클 코드에서는 all_tab_cols에 default_on_null 칼럼이 있지만
         # 티베로에는 없습니다. 그래서 임의의 숫자 99999를 사용했습니다.
+        # 나중에 티베로에 칼럼들이 추가된다면 임의의 숫자를 올바른 숫자로 바꿔주세요.
         if self.server_version_info >= (999999,):
             add_cols = (
                 all_cols.c.default_on_null,

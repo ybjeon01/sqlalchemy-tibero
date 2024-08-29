@@ -449,7 +449,7 @@ class DefaultRequirements(SuiteRequirements):
         """Target database must support SEQUENCE as a server side default."""
 
         return self.sequences + only_on(
-            ["postgresql", "mariadb", "oracle >= 18"],
+            ["postgresql", "mariadb", "oracle >= 4"],
             "doesn't support sequences as a server side default.",
         )
 
@@ -784,7 +784,7 @@ class DefaultRequirements(SuiteRequirements):
         #8221.
 
         """
-        return fails_if(["mssql", "oracle < 23"])
+        return fails_if(["mssql", "oracle < 4"])
 
     @property
     def parens_in_union_contained_select_w_limit_offset(self):
@@ -1944,7 +1944,7 @@ class DefaultRequirements(SuiteRequirements):
 
     @property
     def identity_columns(self):
-        return only_if(["postgresql >= 10", "oracle >= 12", "mssql"])
+        return only_if(["postgresql >= 10", "oracle >= 4", "mssql"])
 
     @property
     def multiple_identity_columns(self):
@@ -1963,12 +1963,12 @@ class DefaultRequirements(SuiteRequirements):
     @property
     def fetch_first(self):
         return only_on(
-            ["postgresql", "mssql >= 11", "oracle >= 12", "mariadb >= 10.6"]
+            ["postgresql", "mssql >= 11", "oracle >= 4", "mariadb >= 10.6"]
         )
 
     @property
     def fetch_percent(self):
-        return only_on(["mssql >= 11", "oracle >= 12"])
+        return only_on(["mssql >= 11", "oracle >= 4"])
 
     @property
     def fetch_ties(self):
@@ -1976,14 +1976,14 @@ class DefaultRequirements(SuiteRequirements):
             [
                 "postgresql >= 13",
                 "mssql >= 11",
-                "oracle >= 12",
+                "oracle >= 4",
                 "mariadb >= 10.6",
             ]
         )
 
     @property
     def fetch_no_order_by(self):
-        return only_on(["postgresql", "oracle >= 12", "mariadb >= 10.6"])
+        return only_on(["postgresql", "oracle >= 4", "mariadb >= 10.6"])
 
     @property
     def fetch_offset_with_options(self):

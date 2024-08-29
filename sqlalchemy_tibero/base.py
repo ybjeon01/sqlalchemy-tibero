@@ -414,6 +414,7 @@ class TiberoCompiler(compiler.SQLCompiler):
                     and isinstance(column.server_default, Computed)
                     and not self.dialect._supports_update_returning_computed_cols
             ):
+                #  TODO: Tibero도 지원안되는지 확인해보기
                 util.warn(
                     "Computed columns don't work with Tibero UPDATE "
                     "statements that use RETURNING; the value of the column "
@@ -1837,7 +1838,7 @@ class TiberoDialect(default.DefaultDialect):
                     coltype = sqltypes.NULLTYPE
 
             default = row_dict["data_default"]
-            if row_dict["virtual_column"] == "YES":
+            if row_dict["virtual_column"] == "Y":
                 computed = dict(sqltext=default)
                 default = None
             else:

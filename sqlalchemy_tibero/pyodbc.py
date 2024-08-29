@@ -407,3 +407,17 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             cursor = dbapi_connection.cursor()
             cursor.execute(f"ALTER SESSION SET ISOLATION_LEVEL={level}")
             cursor.commit()
+
+    def on_connect(self):
+        super_ = super().on_connect()
+
+        def on_connect(conn):
+            if super_ is not None:
+                super_(conn)
+
+            # declare Unicode encoding for pyodbc as per
+            #   https://github.com/mkleehammer/pyodbc/wiki/Unicode
+            conn.setdecoding(pyodbc.SQL_CHAR, encoding=self.char_encoding)
+            conn.setdecoding(pyodbc.SQL_WCHAR, encoding=self.wchar_encoding)
+
+        return on_connect

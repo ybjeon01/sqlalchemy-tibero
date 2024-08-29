@@ -17,20 +17,221 @@ Examples of pyodbc connection string URLs:
 """
 import os
 from typing import cast
+import decimal
 
 import pyodbc
 
+from sqlalchemy import util
 from sqlalchemy.engine import interfaces
+from sqlalchemy.engine import processors
+from sqlalchemy.engine.interfaces import DBAPIConnection
+from sqlalchemy.engine.interfaces import IsolationLevel
 from sqlalchemy import exc
-from sqlalchemy.engine.interfaces import DBAPIConnection, IsolationLevel
-from .base import TiberoExecutionContext, TiberoDialect
 from sqlalchemy.connectors.pyodbc import PyODBCConnector
-from sqlalchemy.types import BLOB
-from sqlalchemy.types import CLOB
-from sqlalchemy.types import NCHAR
-from sqlalchemy.types import TIMESTAMP
+from sqlalchemy.sql import sqltypes
+from sqlalchemy.sql.sqltypes import BLOB
+from sqlalchemy.sql.sqltypes import CLOB
+from sqlalchemy.sql.sqltypes import NCHAR
+from sqlalchemy.sql.sqltypes import TIMESTAMP
+
 
 from .types import NCLOB
+from . import types
+from .base import TiberoExecutionContext, TiberoDialect, TiberoCompiler
+
+
+
+class _TiberoInteger(sqltypes.Integer):
+    def get_dbapi_type(self, dbapi):
+        # see https://github.com/oracle/python-cx_Oracle/issues/
+        # 208#issuecomment-409715955
+        return int
+
+
+class _TiberoNumeric(sqltypes.Numeric):
+    is_number = False
+
+    def bind_processor(self, dialect):
+        if self.scale == 0:
+            return None
+        elif self.asdecimal:
+            processor = processors.to_decimal_processor_factory(
+                decimal.Decimal, self._effective_decimal_return_scale
+            )
+
+            def process(value):
+                if isinstance(value, (int, float)):
+                    return processor(value)
+                elif value is not None and value.is_infinite():
+                    return float(value)
+                else:
+                    return value
+
+            return process
+        else:
+            return processors.to_float
+
+    def result_processor(self, dialect, coltype):
+        return None
+
+
+class _TiberoUUID(sqltypes.Uuid):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.STRING
+
+
+class _TiberoBinaryFloat(_TiberoNumeric):
+    pass
+
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.NATIVE_FLOAT
+
+
+class _TiberoBINARY_FLOAT(_TiberoBinaryFloat, types.BINARY_FLOAT):
+    pass
+
+
+class _TiberoBINARY_DOUBLE(_TiberoBinaryFloat, types.BINARY_DOUBLE):
+    pass
+
+
+class _TiberoNUMBER(_TiberoNumeric):
+    is_number = True
+
+
+class _PYODBCTiberoDate(types._TiberoDate):
+    def bind_processor(self, dialect):
+        return None
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if value is not None:
+                return value.date()
+            else:
+                return value
+
+        return process
+
+
+class _PYODBCTiberoTIMESTAMP(types._TiberoDateLiteralRender, sqltypes.TIMESTAMP):
+    def literal_processor(self, dialect):
+        return self._literal_processor_datetime(dialect)
+
+
+class _LOBDataType:
+    pass
+
+
+# TODO: the names used across CHAR / VARCHAR / NCHAR / NVARCHAR
+# here are inconsistent and not very good
+class _TiberoChar(sqltypes.CHAR):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.FIXED_CHAR
+
+
+class _TiberoNChar(sqltypes.NCHAR):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.FIXED_NCHAR
+
+
+class _TiberoUnicodeStringNCHAR(types.NVARCHAR2):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.NCHAR
+
+
+class _TiberoUnicodeStringCHAR(sqltypes.Unicode):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.LONG_STRING
+
+
+class _TiberoUnicodeTextNCLOB(_LOBDataType, types.NCLOB):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     # previously, this was dbapi.NCLOB.
+    #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
+    #     # when this datatype is used.
+    #     return dbapi.DB_TYPE_NVARCHAR
+
+
+class _TiberoUnicodeTextCLOB(_LOBDataType, sqltypes.UnicodeText):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     # previously, this was dbapi.CLOB.
+    #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
+    #     # when this datatype is used.
+    #     return dbapi.DB_TYPE_NVARCHAR
+
+
+class _TiberoText(_LOBDataType, sqltypes.Text):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     # previously, this was dbapi.CLOB.
+    #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
+    #     # when this datatype is used.
+    #     return dbapi.DB_TYPE_NVARCHAR
+
+
+class _TiberoLong(_LOBDataType, types.LONG):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.LONG_STRING
+
+
+class _TiberoString(sqltypes.String):
+    pass
+
+
+class _TiberoEnum(sqltypes.Enum):
+    def bind_processor(self, dialect):
+        enum_proc = sqltypes.Enum.bind_processor(self, dialect)
+
+        def process(value):
+            raw_str = enum_proc(value)
+            return raw_str
+
+        return process
+
+
+class _TiberoBinary(_LOBDataType, sqltypes.LargeBinary):
+    # def get_dbapi_type(self, dbapi):
+    #     # previously, this was dbapi.BLOB.
+    #     # DB_TYPE_RAW will instead be passed to setinputsizes()
+    #     # when this datatype is used.
+    #     return dbapi.DB_TYPE_RAW
+
+    def bind_processor(self, dialect):
+        return None
+
+    def result_processor(self, dialect, coltype):
+        if not dialect.auto_convert_lobs:
+            return None
+        else:
+            return super().result_processor(dialect, coltype)
+
+
+class _TiberoInterval(types.INTERVAL):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.INTERVAL
+
+
+class _TiberoRaw(types.RAW):
+    pass
+
+
+class _TiberoRowid(types.ROWID):
+    pass
+    # def get_dbapi_type(self, dbapi):
+    #     return dbapi.ROWID
+
+
+class TiberoCompiler_pyodbc(TiberoCompiler):
+    pass
 
 
 class TiberoExecutionContext_pyodbc(TiberoExecutionContext):
@@ -38,11 +239,59 @@ class TiberoExecutionContext_pyodbc(TiberoExecutionContext):
 
 
 class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
-    pyodbc_driver_name = "Tibero"
-    execution_ctx_cls = TiberoExecutionContext_pyodbc
-    colspecs = TiberoDialect.colspecs
+    # 아래 속성들을 보면 DefaultDialect에서 이미 같은 값으로 설정이 되어있기 때문에 생략해도 문제없는 코드가 있습니다. 하지만
+    # OracleDialect_cx_oracle의 패턴을 따랐습니다.
+    # 예를 들어, supports_statement_cache, supports_sane_rowcount들은 이미 DefaultDialect에서 True로 설정되어 있습니다.
+    # 또한, execution_ctx_cls, statement_compiler 또한 TiberoDialect에 설정된 깂을 그대로 사용하지만
+    # OracleDialect_cx_oracle의 패턴을 따랐습니다.
+
     supports_statement_cache = True
-    bind_typing = 2
+    execution_ctx_cls = TiberoExecutionContext_pyodbc
+    statement_compiler = TiberoCompiler_pyodbc
+
+    supports_sane_rowcount = True
+    supports_sane_multi_rowcount = True
+
+    insert_executemany_returning = True                          # DefaultDialect에서는 False
+    insert_executemany_returning_sort_by_parameter_order = True  # DefaultDialect에서는 False
+    update_executemany_returning = True                          # DefaultDialect에서는 False
+    delete_executemany_returning = True                          # DefaultDialect에서는 False
+
+    bind_typing = interfaces.BindTyping.SETINPUTSIZES
+
+    pyodbc_driver_name = "Tibero"
+
+    colspecs = util.update_copy(
+        TiberoDialect.colspecs,
+        {
+            sqltypes.TIMESTAMP: _PYODBCTiberoTIMESTAMP,
+            sqltypes.Numeric: _TiberoNumeric,
+            sqltypes.Float: _TiberoNumeric,
+            types.BINARY_FLOAT: _TiberoBINARY_FLOAT,
+            types.BINARY_DOUBLE: _TiberoBINARY_DOUBLE,
+            sqltypes.Integer: _TiberoInteger,
+            types.NUMBER: _TiberoNUMBER,
+            sqltypes.Date: _PYODBCTiberoDate,
+            sqltypes.LargeBinary: _TiberoBinary,
+            sqltypes.Boolean: types._TiberoBoolean,
+            sqltypes.Interval: _TiberoInterval,
+            types.INTERVAL: _TiberoInterval,
+            sqltypes.Text: _TiberoText,
+            sqltypes.String: _TiberoString,
+            sqltypes.UnicodeText: _TiberoUnicodeTextCLOB,
+            sqltypes.CHAR: _TiberoChar,
+            sqltypes.NCHAR: _TiberoNChar,
+            sqltypes.Enum: _TiberoEnum,
+            types.LONG: _TiberoLong,
+            types.RAW: _TiberoRaw,
+            sqltypes.Unicode: _TiberoUnicodeStringCHAR,
+            sqltypes.NVARCHAR: _TiberoUnicodeStringNCHAR,
+            sqltypes.Uuid: _TiberoUUID,
+            types.NCLOB: _TiberoUnicodeTextNCLOB,
+            types.ROWID: _TiberoRowid,
+        },
+    )
+
 
     def __init__(
         self,
@@ -72,7 +321,7 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
                 "encodingErrors": encoding_errors
             }
         if threaded is not None:
-            self._cx_oracle_threaded = threaded
+            self._cx_tibero_threaded = threaded
         self.auto_convert_lobs = auto_convert_lobs
         self.coerce_to_decimal = coerce_to_decimal
         self.include_set_input_sizes = {
@@ -82,13 +331,6 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             BLOB,
             TIMESTAMP,
         }
-
-    def initialize(self, connection):
-        pyodbc_conn = cast(pyodbc.Connection, connection.connection.dbapi_connection)
-        pyodbc_conn.setdecoding(pyodbc.SQL_CHAR, self.char_encoding)
-        pyodbc_conn.setdecoding(pyodbc.SQL_WCHAR, self.wchar_encoding)
-
-        super().initialize(connection)
 
     def get_isolation_level(
         self, dbapi_connection: DBAPIConnection

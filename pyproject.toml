@@ -10,3 +10,7 @@ markers = [
     "backend: tests that should run on all backends; typically dialect-sensitive",
     "mypy: mypy integration / plugin tests",
 ]
+
+[tool.ruff]
+line-length = 79
+target-version = "py37"

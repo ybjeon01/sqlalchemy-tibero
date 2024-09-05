@@ -47,6 +47,14 @@ class _TiberoInteger(sqltypes.Integer):
         # 208#issuecomment-409715955
         return int
 
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if value is not None:
+                return int(value)
+            else:
+                return value
+        return process
+
 
 class _TiberoNumeric(sqltypes.Numeric):
     is_number = False

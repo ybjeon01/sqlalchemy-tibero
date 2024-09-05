@@ -118,6 +118,9 @@ class _PYODBCTiberoTIMESTAMP(types._TiberoDateLiteralRender, sqltypes.TIMESTAMP)
     def literal_processor(self, dialect):
         return self._literal_processor_datetime(dialect)
 
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_TYPE_TIMESTAMP
+
 
 class _LOBDataType:
     pass

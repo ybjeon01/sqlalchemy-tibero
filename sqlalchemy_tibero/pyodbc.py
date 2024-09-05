@@ -255,10 +255,14 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     supports_sane_rowcount = True
     supports_sane_multi_rowcount = True
 
-    insert_executemany_returning = True                          # DefaultDialect에서는 False
-    insert_executemany_returning_sort_by_parameter_order = True  # DefaultDialect에서는 False
-    update_executemany_returning = True                          # DefaultDialect에서는 False
-    delete_executemany_returning = True                          # DefaultDialect에서는 False
+    insert_executemany_returning = False                          # OracleDialect_cx_oracle에서는 True
+    insert_executemany_returning_sort_by_parameter_order = False  # OracleDialect_cx_oracle에서는 True
+    update_executemany_returning = False                          # OracleDialect_cx_oracle에서는 True
+    delete_executemany_returning = False                          # OracleDialect_cx_oracle에서는 True
+
+    insert_returning = False  # OracleDialect에서는 True
+    update_returning = False  # OracleDialect에서는 True
+    delete_returning = False  # OracleDialect에서는 True
 
     bind_typing = interfaces.BindTyping.SETINPUTSIZES
 

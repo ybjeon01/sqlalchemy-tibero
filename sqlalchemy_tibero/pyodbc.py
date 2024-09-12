@@ -15,8 +15,8 @@ Connecting
 Examples of pyodbc connection string URLs:
 * ``tibero+pyodbc://mydsn`` - connects using the specified DSN named ``mydsn``.
 """
+
 import os
-from typing import cast
 import decimal
 
 import pyodbc
@@ -40,7 +40,6 @@ from . import types
 from .base import TiberoExecutionContext, TiberoDialect, TiberoCompiler
 
 
-
 class _TiberoInteger(sqltypes.Integer):
     def get_dbapi_type(self, dbapi):
         # see https://github.com/oracle/python-cx_Oracle/issues/
@@ -53,6 +52,7 @@ class _TiberoInteger(sqltypes.Integer):
                 return int(value)
             else:
                 return value
+
         return process
 
 
@@ -122,7 +122,9 @@ class _PYODBCTiberoDate(types._TiberoDate):
         return process
 
 
-class _PYODBCTiberoTIMESTAMP(types._TiberoDateLiteralRender, sqltypes.TIMESTAMP):
+class _PYODBCTiberoTIMESTAMP(
+    types._TiberoDateLiteralRender, sqltypes.TIMESTAMP
+):
     def literal_processor(self, dialect):
         return self._literal_processor_datetime(dialect)
 
@@ -263,10 +265,11 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     supports_sane_rowcount = True
     supports_sane_multi_rowcount = True
 
-    insert_executemany_returning = False                          # OracleDialect_cx_oracle에서는 True
-    insert_executemany_returning_sort_by_parameter_order = False  # OracleDialect_cx_oracle에서는 True
-    update_executemany_returning = False                          # OracleDialect_cx_oracle에서는 True
-    delete_executemany_returning = False                          # OracleDialect_cx_oracle에서는 True
+    # OracleDialect_cx_oracle에서는 아래 4개의 항목 모두 True
+    insert_executemany_returning = False
+    insert_executemany_returning_sort_by_parameter_order = False
+    update_executemany_returning = False
+    delete_executemany_returning = False
 
     insert_returning = False  # OracleDialect에서는 True
     update_returning = False  # OracleDialect에서는 True
@@ -306,7 +309,6 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             types.ROWID: _TiberoRowid,
         },
     )
-
 
     def __init__(
         self,
@@ -396,7 +398,8 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
                 ELSE 'READ COMMITTED' END AS isolation_level
                 FROM v$transaction WHERE
                 usn = ? AND slot = ? AND wrap = ?
-                """, (xidusn, xidslot, xidsqn)
+                """,
+                (xidusn, xidslot, xidsqn),
             )
             row = cursor.fetchone()
             if row is None:
@@ -418,8 +421,12 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         if level == "AUTOCOMMIT":
             dbapi_connection.autocommit = True
         else:
-            supported_levels = self.get_isolation_level_values(dbapi_connection)
-            assert level in supported_levels, f"{level} is an unsupported isolation level"
+            supported_levels = self.get_isolation_level_values(
+                dbapi_connection
+            )
+            assert (
+                level in supported_levels
+            ), f"{level} is an unsupported isolation level"
 
             dbapi_connection.autocommit = False
             cursor = dbapi_connection.cursor()

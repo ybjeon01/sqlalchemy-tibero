@@ -1,7 +1,4 @@
-"""Requirements specific to SQLAlchemy's own unit tests.
-
-
-"""
+"""Requirements specific to SQLAlchemy's own unit tests."""
 
 from sqlalchemy import exc
 from sqlalchemy.sql import sqltypes
@@ -1173,7 +1170,7 @@ class DefaultRequirements(SuiteRequirements):
                 cursor = connection.cursor()
                 try:
                     cursor.execute("SELECT * FROM pragma_index_info('idx52')")
-                except:
+                except Exception:
                     return False
                 else:
                     return (

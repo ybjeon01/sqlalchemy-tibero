@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a8] - 2024-09-12
+
+### Added
+### Changed
+### Fixed
+- pypi test server에 잘못된 2.0.0a7이 올라가 있습니다. 어쩔 수 없이 a8로 올립니다.
+
 ## [2.0.0a7] - 2024-09-12
 
 ### Added

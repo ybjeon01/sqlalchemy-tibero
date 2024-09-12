@@ -384,8 +384,11 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             cursor.execute("SELECT get_trans_id_34218484 FROM dual")
             trans_id = cursor.fetchone()[0]
             xidusn, xidslot, xidsqn = trans_id.split(".", 2)
-            # 티베로의 여러 view를 보면 (xidusn, xidslot, xidsqn) 또는 (usn, slot, wrap) 칼럼명을 씁니다.
-            # 이를 보아 이름의 통일성이 없는 문제가 있습니다.
+            # 티베로의 여러 view를 보면 (xidusn, xidslot, xidsqn) 또는 (usn, slot, wrap)
+            # 칼럼명을 씁니다. 이를 보아 티베로 테이블 칼럼 이름의 통일성이 없는 문제가 있습니다.
+            # flag의 내용이 oracle이랑 많이 다릅니다. 다른 연구원에게 물어서 대략적으로 transaction
+            # level을 찾는 것을 알아냈지만 확실하지 않습니다. 문서도 없어서 아래의 코드는 언젠가 깨질 수도
+            # 있습니다.
             cursor.execute(
                 """
                 SELECT CASE flag

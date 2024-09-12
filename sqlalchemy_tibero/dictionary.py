@@ -267,7 +267,7 @@ all_constraints = Table(
     dictionary_meta,
     Column("owner", VARCHAR(128)),
     Column("constraint_name", VARCHAR(128)),
-    Column("con_type", VARCHAR(22)),            # Tibero만 이 칼럼을 가지고 있습니다.
+    Column("con_type", VARCHAR(22)),            # Tibero만 이 칼럼을 가지고 있습니다. constraint_type을 쉽게 보기 위한 column
     Column("constraint_type", VARCHAR(1)),
     Column("table_name", VARCHAR(128)),
     Column("search_condition", VARCHAR(65532)),

@@ -768,8 +768,9 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         #     if index.dialect_options["tibero"]["compress"] is True:
         #         text += " COMPRESS"
         #     else:
-        #         text += " COMPRESS %d" % (
-        #             index.dialect_options["tibero"]["compress"]
+        #         text += (
+        #             " COMPRESS %d"
+        #             % (index.dialect_options["tibero"]["compress"])
         #         )
         if index.dialect_options["oracle"]["compress"] is not False:
             if index.dialect_options["oracle"]["compress"] is True:

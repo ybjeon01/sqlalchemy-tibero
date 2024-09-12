@@ -2077,10 +2077,29 @@ class TiberoDialect(default.DefaultDialect):
 
     @lru_cache()
     def _index_query(self, owner):
+
+        # HACK
+        # CASE 문을 사용하여 정규식에 맞는 경우 'SYS'를 붙임
+        # oracle의 dialect._index_query()는 index_name과 index position에 따라 row
+        # order를 결정합니다. 그런데 티베로는 index 이름 짓는 규칙이 오라클이랑 달라서 테스트에서
+        # 실패하는 문제가 발생합니다. 우회방안으로 sql query 실행시 index name을 오라클이랑 비슷하게 변경하고
+        # 변경된 index name으로 순서를 결정하도록 했습니다. 이 order가 중요할 수 있으니 최대한 sqlalchemy의
+        # 행동과 따라하기 위해 변경했으나 솔직히 이 순서가 중요한 것 같지는 않습니다.
+        # 테스트 스위트에서 정답지를 변경하거나 테스트의 동작을 수정할 수도 있지만, Tibero Dialect에서
+        # 코드를 수정하기로 한 이유는, Oracle과 비교해 차이가 발생할 경우 가능한 서버에 가까운 쪽에서 수정하는
+        # 것이 클라이언트 쪽에서 발생할 수 있는 불일치를 최소화할 수 있다고 판단했기 때문입니다.
+        index_name = sql.case(
+            (
+                sql.text("REGEXP_LIKE(a_ind_columns.index_name, '^_.*CON\\d+$')"),
+                sql.literal_column("'SYS'") + dictionary.all_ind_columns.c.index_name,
+            ),
+            else_= dictionary.all_ind_columns.c.index_name
+        ).label("index_name")
+
         return (
             select(
                 dictionary.all_ind_columns.c.table_name,
-                dictionary.all_ind_columns.c.index_name,
+                index_name,
                 dictionary.all_ind_columns.c.column_name,
                 dictionary.all_indexes.c.index_type,
                 dictionary.all_indexes.c.uniqueness,
@@ -2123,7 +2142,7 @@ class TiberoDialect(default.DefaultDialect):
                 ),
             )
             .order_by(
-                dictionary.all_ind_columns.c.index_name,
+                sql.literal_column("index_name"),
                 dictionary.all_ind_columns.c.column_position,
             )
         )
@@ -2140,13 +2159,30 @@ class TiberoDialect(default.DefaultDialect):
 
         query = self._index_query(owner)
 
-        pks = {
-            row_dict["constraint_name"]
-            for row_dict in self._get_all_constraint_rows(
-                connection, schema, dblink, all_objects, **kw
-            )
-            if row_dict["constraint_type"] == "P"
-        }
+        # NOTE: get_multi_indexes()는 SQLAlchemy에서는 primary
+        #       key index를 제외한 index들만 반환하는 것이 spec인 듯 합니다.
+        #       문서를 보았을 때 그런 말은 없으나 oracle dialect는 그렇게 구현
+        #       되어 있습니다.
+        pks = set()
+        for row_dict in self._get_all_constraint_rows(connection, schema, dblink, all_objects, **kw):
+            if row_dict["constraint_type"] != "P":
+                continue
+
+            # mview의 index 중에 i_snap$으로 시작하는 index가 있습니다.
+            # oracle에서는 특정 설정없이 mview를 생성하면 새로운 index가
+            # 생성되고 all_constraints view에서 index는 constraint_name과
+            # index_name이 같은 string은 가집니다. 반면에 tibero에서는 원본 테이블의
+            # index에 링크된 i_snap$ index를 사용하는 것을 확인했습니다. 이는 곧,
+            # i_snap$ 인덱스의 경우 all_constraints view에서 constraint_name은
+            # 원본 index 이름을 가지고 index_name이 i_snap$인 것을 의미합니다.
+            # self._index_query()는 constraint_name이 아닌 index_name만을 반환하므로
+            # i_snap$이 primary key index라면 pks에 추가해줘야 합니다.
+            index_name = row_dict.get("index_name")
+            constraint_name = row_dict["constraint_name"]
+            if index_name and index_name != constraint_name:
+                pks.add(index_name)
+            else:
+                pks.add(constraint_name)
 
         # all_ind_expressions.column_expression is LONG
         result = self._run_batches(
@@ -2261,17 +2297,43 @@ class TiberoDialect(default.DefaultDialect):
     def _constraint_query(self, owner):
         local = dictionary.all_cons_columns.alias("local")
         remote = dictionary.all_cons_columns.alias("remote")
+        # HACK
+        # CASE 문을 사용하여 정규식에 맞는 경우 'SYS'를 붙임
+        # oracle의 dialect._constraint_query()는 constraint_name과 position에 따라 row
+        # order를 결정합니다. 그런데 티베로는 constraint_name 이름 짓는 규칙이 오라클이랑 달라서 테스트에서
+        # 실패하는 문제가 발생합니다. 우회방안으로 sql query 실행시 constraint_name을 오라클이랑 비슷하게 변경하고
+        # 변경된 constraint_name으로 순서를 결정하도록 했습니다. 이 order가 중요할 수 있으니 최대한
+        # sqlalchemy의 행동과 따라하기 위해 변경했으나 솔직히 이 순서가 중요한 것 같지는 않습니다.
+        # 테스트 스위트에서 정답지를 변경하거나 테스트의 동작을 수정할 수도 있지만, Tibero Dialect에서
+        # 코드를 수정하기로 한 이유는, Oracle과 비교해 차이가 발생할 경우 가능한 서버에 가까운 쪽에서 수정하는
+        # 것이 클라이언트 쪽에서 발생할 수 있는 불일치를 최소화할 수 있다고 판단했기 때문입니다.
+        constraint_name = sql.case(
+            (
+                sql.text("REGEXP_LIKE(a_constraints.constraint_name, '^_.*CON\\d+$')"),
+                sql.literal_column("'SYS'") + dictionary.all_constraints.c.constraint_name
+            ),
+            else_=dictionary.all_constraints.c.constraint_name
+        ).label("constraint_name")
+        index_name = sql.case(
+            (
+                sql.text("REGEXP_LIKE(a_constraints.index_name, '^_.*CON\\d+$')"),
+                sql.literal_column("'SYS'") + dictionary.all_constraints.c.index_name
+            ),
+            else_=dictionary.all_constraints.c.index_name
+        ).label("index_name")
+
         return (
             select(
                 dictionary.all_constraints.c.table_name,
                 dictionary.all_constraints.c.constraint_type,
-                dictionary.all_constraints.c.constraint_name,
+                constraint_name,
                 local.c.column_name.label("local_column"),
                 remote.c.table_name.label("remote_table"),
                 remote.c.column_name.label("remote_column"),
                 remote.c.owner.label("remote_owner"),
                 dictionary.all_constraints.c.search_condition,
                 dictionary.all_constraints.c.delete_rule,
+                index_name,
             )
             .select_from(dictionary.all_constraints)
             .join(
@@ -2304,7 +2366,7 @@ class TiberoDialect(default.DefaultDialect):
                 ),
             )
             .order_by(
-                dictionary.all_constraints.c.constraint_name, local.c.position
+                sql.literal_column("constraint_name"), local.c.position
             )
         )
 

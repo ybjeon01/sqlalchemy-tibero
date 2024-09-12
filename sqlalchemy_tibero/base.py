@@ -745,11 +745,7 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         text = "CREATE "
         if index.unique:
             text += "UNIQUE "
-        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
-        # if index.dialect_options["tibero"]["bitmap"]:
-        #     text += "BITMAP "
-
-        if index.dialect_options["oracle"]["bitmap"]:
+        if index.dialect_options["tibero"]["bitmap"]:
             text += "BITMAP "
 
         text += "INDEX %s ON %s (%s)" % (
@@ -763,21 +759,13 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
             ),
         )
 
-        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
-        # if index.dialect_options["tibero"]["compress"] is not False:
-        #     if index.dialect_options["tibero"]["compress"] is True:
-        #         text += " COMPRESS"
-        #     else:
-        #         text += " COMPRESS %d" % (
-        #             index.dialect_options["tibero"]["compress"]
-        #         )
-        if index.dialect_options["oracle"]["compress"] is not False:
-            if index.dialect_options["oracle"]["compress"] is True:
+        if index.dialect_options["tibero"]["compress"] is not False:
+            if index.dialect_options["tibero"]["compress"] is True:
                 text += " COMPRESS"
             else:
                 text += (
                     " COMPRESS %d"
-                    % (index.dialect_options["oracle"]["compress"])
+                    % (index.dialect_options["tibero"]["compress"])
                 )
 
         return text
@@ -785,9 +773,7 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
     def post_create_table(self, table):
         table_opts = []
 
-        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
-        # opts = table.dialect_options["tibero"]
-        opts = table.dialect_options["oracle"]
+        opts = table.dialect_options["tibero"]
 
         if opts["on_commit"]:
             on_commit_options = opts["on_commit"].replace("_", " ").upper()
@@ -888,7 +874,7 @@ class TiberoExecutionContext(default.DefaultExecutionContext):
 
 
 class TiberoDialect(default.DefaultDialect):
-    name = "oracle"
+    name = "tibero"
     supports_statement_cache = True
     supports_alter = True
     max_identifier_length = 128

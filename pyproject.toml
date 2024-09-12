@@ -1,5 +1,8 @@
-[tool.black]
-line-length = 79
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools>=42.0.0"
+]
 
 [tool.pytest.ini_options]
 addopts = "--tb native -v -r sfxX --maxfail=3000 -p warnings -p logging --strict-markers -s --dropfirst"
@@ -7,3 +10,7 @@ markers = [
     "backend: tests that should run on all backends; typically dialect-sensitive",
     "mypy: mypy integration / plugin tests",
 ]
+
+[tool.ruff]
+line-length = 79
+target-version = "py37"

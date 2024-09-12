@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Optional
 from typing import Type
-from typing import TYPE_CHECKING
+# from typing import TYPE_CHECKING
 
 from sqlalchemy import exc
 from sqlalchemy.sql import sqltypes
@@ -78,10 +78,10 @@ class FLOAT(sqltypes.FLOAT):
     __visit_name__ = "FLOAT"
 
     def __init__(
-            self,
-            binary_precision=None,
-            asdecimal=False,
-            decimal_return_scale=None,
+        self,
+        binary_precision=None,
+        asdecimal=False,
+        decimal_return_scale=None,
     ):
         r"""
         Construct a FLOAT
@@ -98,8 +98,7 @@ class FLOAT(sqltypes.FLOAT):
 
         """
         super().__init__(
-            asdecimal=asdecimal,
-            decimal_return_scale=decimal_return_scale
+            asdecimal=asdecimal, decimal_return_scale=decimal_return_scale
         )
         self.binary_precision = binary_precision
 
@@ -210,7 +209,9 @@ class INTERVAL(sqltypes.NativeForEmulated, sqltypes._AbstractInterval):
 
     @classmethod
     def adapt_emulated_to_native(
-            cls, interval: sqltypes.Interval, **kw  # type: ignore[override]
+        cls,
+        interval: sqltypes.Interval,
+        **kw,  # type: ignore[override]
     ):
         return INTERVAL(
             day_precision=interval.day_precision,
@@ -233,7 +234,7 @@ class INTERVAL(sqltypes.NativeForEmulated, sqltypes._AbstractInterval):
         return dt.timedelta
 
     def literal_processor(
-            self, dialect: Dialect
+        self, dialect: Dialect
     ) -> Optional[_LiteralProcessorType[dt.timedelta]]:
         def process(value: dt.timedelta) -> str:
             return f"NUMTODSINTERVAL({value.total_seconds()}, 'SECOND')"

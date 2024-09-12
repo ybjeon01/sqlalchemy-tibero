@@ -159,13 +159,13 @@ class TiberoTypeCompiler(compiler.GenericTypeCompiler):
         return self._generate_numeric(type_, "NUMBER", **kw)
 
     def _generate_numeric(
-            self,
-            type_,
-            name,
-            precision=None,
-            scale=None,
-            _requires_binary_precision=False,
-            **kw,
+        self,
+        type_,
+        name,
+        precision=None,
+        scale=None,
+        _requires_binary_precision=False,
+        **kw,
     ):
         if precision is None:
             precision = getattr(type_, "precision", None)
@@ -341,9 +341,9 @@ class TiberoCompiler(compiler.SQLCompiler):
             else:
                 right = join.right
             return (
-                    self.process(join.left, from_linter=from_linter, **kwargs)
-                    + ", "
-                    + self.process(right, from_linter=from_linter, **kwargs)
+                self.process(join.left, from_linter=from_linter, **kwargs)
+                + ", "
+                + self.process(right, from_linter=from_linter, **kwargs)
             )
 
     def _get_nonansi_join_whereclause(self, froms):
@@ -357,11 +357,11 @@ class TiberoCompiler(compiler.SQLCompiler):
                 # unconditionally regardless of operator or the other side
                 def visit_binary(binary):
                     if isinstance(
-                            binary.left, expression.ColumnClause
+                        binary.left, expression.ColumnClause
                     ) and join.right.is_derived_from(binary.left.table):
                         binary.left = _OuterJoinColumn(binary.left)
                     elif isinstance(
-                            binary.right, expression.ColumnClause
+                        binary.right, expression.ColumnClause
                     ) and join.right.is_derived_from(binary.right.table):
                         binary.right = _OuterJoinColumn(binary.right)
 
@@ -400,19 +400,19 @@ class TiberoCompiler(compiler.SQLCompiler):
         return " " + alias_name_text
 
     def returning_clause(
-            self, stmt, returning_cols, *, populate_result_map, **kw
+        self, stmt, returning_cols, *, populate_result_map, **kw
     ):
         columns = []
         binds = []
 
         for i, column in enumerate(
-                expression._select_iterables(returning_cols)
+            expression._select_iterables(returning_cols)
         ):
             if (
-                    self.isupdate
-                    and isinstance(column, sa_schema.Column)
-                    and isinstance(column.server_default, Computed)
-                    and not self.dialect._supports_update_returning_computed_cols
+                self.isupdate
+                and isinstance(column, sa_schema.Column)
+                and isinstance(column.server_default, Computed)
+                and not self.dialect._supports_update_returning_computed_cols
             ):
                 #  TODO: Tibero도 지원안되는지 확인해보기
                 util.warn(
@@ -472,8 +472,8 @@ class TiberoCompiler(compiler.SQLCompiler):
         """
 
         if (
-                select._fetch_clause is not None
-                or not self.dialect._supports_offset_fetch
+            select._fetch_clause is not None
+            or not self.dialect._supports_offset_fetch
         ):
             return super()._row_limit_clause(
                 select, use_literal_execute_for_simple_int=True, **kw
@@ -507,9 +507,9 @@ class TiberoCompiler(compiler.SQLCompiler):
 
             # if fetch is used this is not needed
             if (
-                    select._has_row_limiting_clause
-                    and not self.dialect._supports_offset_fetch
-                    and select._fetch_clause is None
+                select._has_row_limiting_clause
+                and not self.dialect._supports_offset_fetch
+                and select._fetch_clause is None
             ):
                 limit_clause = select._limit_clause
                 offset_clause = select._offset_clause
@@ -545,14 +545,14 @@ class TiberoCompiler(compiler.SQLCompiler):
                         c
                         for c in inner_subquery.c
                         if orig_select.selected_columns.corresponding_column(c)
-                           is not None
+                        is not None
                     ]
                 )
 
                 if (
-                        limit_clause is not None
-                        and self.dialect.optimize_limits
-                        and select._simple_int_clause(limit_clause)
+                    limit_clause is not None
+                    and self.dialect.optimize_limits
+                    and select._simple_int_clause(limit_clause)
                 ):
                     limitselect = limitselect.prefix_with(
                         expression.text(
@@ -574,8 +574,8 @@ class TiberoCompiler(compiler.SQLCompiler):
                 # If needed, add the limiting clause
                 if limit_clause is not None:
                     if select._simple_int_clause(limit_clause) and (
-                            offset_clause is None
-                            or select._simple_int_clause(offset_clause)
+                        offset_clause is None
+                        or select._simple_int_clause(offset_clause)
                     ):
                         max_row = limit_clause
 
@@ -606,8 +606,8 @@ class TiberoCompiler(compiler.SQLCompiler):
                         limitselect_cols = limitselect.selected_columns
                         for elem in for_update.of:
                             if (
-                                    limitselect_cols.corresponding_column(elem)
-                                    is None
+                                limitselect_cols.corresponding_column(elem)
+                                is None
                             ):
                                 limitselect = limitselect.add_columns(elem)
 
@@ -618,7 +618,7 @@ class TiberoCompiler(compiler.SQLCompiler):
                             c
                             for c in limit_subquery.c
                             if origselect_cols.corresponding_column(c)
-                               is not None
+                            is not None
                         ]
                     )
 
@@ -747,6 +747,7 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
             text += "UNIQUE "
         if index.dialect_options["tibero"]["bitmap"]:
             text += "BITMAP "
+
         text += "INDEX %s ON %s (%s)" % (
             self._prepared_index_name(index, include_schema=True),
             preparer.format_table(index.table, use_schema=True),
@@ -757,17 +758,21 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
                 for expr in index.expressions
             ),
         )
+
         if index.dialect_options["tibero"]["compress"] is not False:
             if index.dialect_options["tibero"]["compress"] is True:
                 text += " COMPRESS"
             else:
-                text += " COMPRESS %d" % (
-                    index.dialect_options["tibero"]["compress"]
+                text += (
+                    " COMPRESS %d"
+                    % (index.dialect_options["tibero"]["compress"])
                 )
+
         return text
 
     def post_create_table(self, table):
         table_opts = []
+
         opts = table.dialect_options["tibero"]
 
         if opts["on_commit"]:
@@ -787,9 +792,15 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         text = text.replace("NO MINVALUE", "NOMINVALUE")
         text = text.replace("NO MAXVALUE", "NOMAXVALUE")
         text = text.replace("NO CYCLE", "NOCYCLE")
-        options = identity_options.dialect_options["tibero"]
-        if options.get("order") is not None:
-            text += " ORDER" if options["order"] else " NOORDER"
+        # TODO: 이 코드는 sqlalchemy 2.1에서 부터 지원됩니다. sqlalchemy 2.1 버전을
+        #       위해 코멘트를 나중에 해제하십시오.
+        # options = identity_options.dialect_options["tibero"]
+        # if options.get("order") is not None:
+        #     text += " ORDER" if options["order"] else " NOORDER"
+
+        if identity_options.order is not None:
+            text += " ORDER" if identity_options.order else " NOORDER"
+
         return text.strip()
 
     def visit_computed_column(self, generated, **kw):
@@ -811,8 +822,13 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         else:
             kind = "ALWAYS" if identity.always else "BY DEFAULT"
         text = "GENERATED %s" % kind
-        if identity.dialect_options["tibero"].get("on_null"):
+        # TODO: 이 코드는 sqlalchemy 2.1에서 부터 지원됩니다. sqlalchemy 2.1 버전을
+        #       위해 코멘트를 나중에 해제하십시오.
+        # if identity.dialect_options["tibero"].get("on_null"):
+        #     text += " ON NULL"
+        if identity.on_null:
             text += " ON NULL"
+
         text += " AS IDENTITY"
         options = self.get_identity_options(identity)
         if options:
@@ -830,9 +846,9 @@ class TiberoIdentifierPreparer(compiler.IdentifierPreparer):
         """Return True if the given identifier requires quoting."""
         lc_value = value.lower()
         return (
-                lc_value in self.reserved_words
-                or value[0] in self.illegal_initial_characters
-                or not self.legal_characters.match(str(value))
+            lc_value in self.reserved_words
+            or value[0] in self.illegal_initial_characters
+            or not self.legal_characters.match(str(value))
         )
 
     def format_savepoint(self, savepoint):
@@ -913,23 +929,23 @@ class TiberoDialect(default.DefaultDialect):
 
     @util.deprecated_params(
         use_binds_for_limits=(
-                "1.4",
-                "The ``use_binds_for_limits`` Tibero dialect parameter is "
-                "deprecated. The dialect now renders LIMIT /OFFSET integers "
-                "inline in all cases using a post-compilation hook, so that the "
-                "value is still represented by a 'bound parameter' on the Core "
-                "Expression side.",
+            "1.4",
+            "The ``use_binds_for_limits`` Tibero dialect parameter is "
+            "deprecated. The dialect now renders LIMIT /OFFSET integers "
+            "inline in all cases using a post-compilation hook, so that the "
+            "value is still represented by a 'bound parameter' on the Core "
+            "Expression side.",
         )
     )
     def __init__(
-            self,
-            use_ansi=True,
-            optimize_limits=False,
-            use_binds_for_limits=None,
-            use_nchar_for_unicode=False,
-            exclude_tablespaces=("SYSTEM", "SYSSUB"),
-            enable_offset_fetch=True,
-            **kwargs,
+        self,
+        use_ansi=True,
+        optimize_limits=False,
+        use_binds_for_limits=None,
+        use_nchar_for_unicode=False,
+        exclude_tablespaces=("SYSTEM", "SYSSUB"),
+        enable_offset_fetch=True,
+        **kwargs,
     ):
         default.DefaultDialect.__init__(self, **kwargs)
         self._use_nchar_for_unicode = use_nchar_for_unicode
@@ -940,7 +956,9 @@ class TiberoDialect(default.DefaultDialect):
         # TODO: tibero 7 패치셋 version에 따라 지원 여부 확인하기
         #       enable_offset_fetch는 oracle version에 따라 지원 여부가 다른 것 같은데
         #       tibero 7에서는 어떤지 확인하기
-        self.enable_offset_fetch = self._supports_offset_fetch = enable_offset_fetch
+        self.enable_offset_fetch = self._supports_offset_fetch = (
+            enable_offset_fetch
+        )
 
     def initialize(self, connection):
         super().initialize(connection)
@@ -989,13 +1007,12 @@ class TiberoDialect(default.DefaultDialect):
             return self.get_isolation_level(dbapi_conn)
         except NotImplementedError:
             raise
-        except:
+        except Exception:
             return "READ COMMITTED"
 
     def _execute_reflection(
-            self, connection, query, dblink, returns_long, params=None
+        self, connection, query, dblink, returns_long, params=None
     ):
-
         # TODO: schema_translate_map이 무엇인지 어떻게 작동하는지 알아보기
         #       sqlalchemy tibero dialect를 통해서 dblink가 작동하는지 확인하기
         if dblink and not dblink.startswith("@"):
@@ -1049,7 +1066,7 @@ class TiberoDialect(default.DefaultDialect):
 
     @reflection.cache
     def has_table(
-            self, connection, table_name, schema=None, dblink=None, **kw
+        self, connection, table_name, schema=None, dblink=None, **kw
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link."""
         self._ensure_has_table_connection(connection)
@@ -1072,7 +1089,7 @@ class TiberoDialect(default.DefaultDialect):
 
     @reflection.cache
     def has_sequence(
-            self, connection, sequence_name, schema=None, dblink=None, **kw
+        self, connection, sequence_name, schema=None, dblink=None, **kw
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link."""
         if not schema:
@@ -1134,11 +1151,10 @@ class TiberoDialect(default.DefaultDialect):
 
     @lru_cache()
     def _all_objects_query(
-            self, owner, scope, kind, has_filter_names, has_mat_views
+        self, owner, scope, kind, has_filter_names, has_mat_views
     ):
-        query = (
-            select(dictionary.all_objects.c.object_name)
-            .where(dictionary.all_objects.c.owner == owner)
+        query = select(dictionary.all_objects.c.object_name).where(
+            dictionary.all_objects.c.owner == owner
         )
 
         # NOTE: materialized views are listed in all_objects twice;
@@ -1154,8 +1170,8 @@ class TiberoDialect(default.DefaultDialect):
             if ObjectKind.VIEW in kind:
                 object_type.append("VIEW")
             if (
-                    ObjectKind.MATERIALIZED_VIEW in kind
-                    and ObjectKind.TABLE not in kind
+                ObjectKind.MATERIALIZED_VIEW in kind
+                and ObjectKind.TABLE not in kind
             ):
                 # materilaized view are listed also as tables so there is no
                 # need to add them to the in_ if also selecting tables.
@@ -1200,7 +1216,7 @@ class TiberoDialect(default.DefaultDialect):
         ("dblink", InternalTraversal.dp_string),
     )
     def _get_all_objects(
-            self, connection, schema, scope, kind, filter_names, dblink, **kw
+        self, connection, schema, scope, kind, filter_names, dblink, **kw
     ):
         owner = self.denormalize_schema_name(
             schema or self.default_schema_name
@@ -1209,8 +1225,8 @@ class TiberoDialect(default.DefaultDialect):
         has_filter_names, params = self._prepare_filter_names(filter_names)
         has_mat_views = False
         if (
-                ObjectKind.TABLE in kind
-                and ObjectKind.MATERIALIZED_VIEW not in kind
+            ObjectKind.TABLE in kind
+            and ObjectKind.MATERIALIZED_VIEW not in kind
         ):
             # see note in _all_objects_query
             mat_views = self.get_materialized_view_names(
@@ -1255,7 +1271,7 @@ class TiberoDialect(default.DefaultDialect):
         for row in result:
             # TODO: 바로 아래 라인이 문제없이 작동하는지 테스트 필요
             remote_table_name, db_link = row["db_link"].split("@")
-            db_link = '@' + db_link
+            db_link = "@" + db_link
 
             key = db_link, row["org_object_owner"]
             tn = self.normalize_name(row["org_object_name"])
@@ -1381,10 +1397,7 @@ class TiberoDialect(default.DefaultDialect):
                 "NOT IN (%s) AND "
                 % (", ".join(["'%s'" % ts for ts in self.exclude_tablespaces]))
             )
-        sql_str += (
-            "OWNER = :owner "
-            "AND DURATION IS NOT NULL"
-        )
+        sql_str += "OWNER = :owner " "AND DURATION IS NOT NULL"
 
         cursor = connection.execute(sql.text(sql_str), dict(owner=schema))
         return [self.normalize_name(row[0]) for row in cursor]
@@ -1422,7 +1435,7 @@ class TiberoDialect(default.DefaultDialect):
 
     @reflection.cache
     def get_materialized_view_names(
-            self, connection, schema=None, dblink=None, _normalize=True, **kw
+        self, connection, schema=None, dblink=None, _normalize=True, **kw
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link."""
         if not schema:
@@ -1503,7 +1516,7 @@ class TiberoDialect(default.DefaultDialect):
 
     @lru_cache()
     def _table_options_query(
-            self, owner, scope, kind, has_filter_names, has_mat_views
+        self, owner, scope, kind, has_filter_names, has_mat_views
     ):
         query = select(
             dictionary.all_tables.c.table_name,
@@ -1532,9 +1545,9 @@ class TiberoDialect(default.DefaultDialect):
             )
 
         if (
-                has_mat_views
-                and ObjectKind.TABLE in kind
-                and ObjectKind.MATERIALIZED_VIEW not in kind
+            has_mat_views
+            and ObjectKind.TABLE in kind
+            and ObjectKind.MATERIALIZED_VIEW not in kind
         ):
             # cant use EXCEPT ALL / MINUS here because we don't have an
             # excludable row vs. the query above
@@ -1547,8 +1560,8 @@ class TiberoDialect(default.DefaultDialect):
                 )
             )
         elif (
-                ObjectKind.TABLE not in kind
-                and ObjectKind.MATERIALIZED_VIEW in kind
+            ObjectKind.TABLE not in kind
+            and ObjectKind.MATERIALIZED_VIEW in kind
         ):
             query = query.where(
                 dictionary.all_tables.c.table_name.in_(bindparam("mat_views"))
@@ -1557,15 +1570,15 @@ class TiberoDialect(default.DefaultDialect):
 
     @_handle_synonyms_decorator
     def get_multi_table_options(
-            self,
-            connection,
-            *,
-            schema,
-            filter_names,
-            scope,
-            kind,
-            dblink=None,
-            **kw,
+        self,
+        connection,
+        *,
+        schema,
+        filter_names,
+        scope,
+        kind,
+        dblink=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -1578,8 +1591,8 @@ class TiberoDialect(default.DefaultDialect):
         has_mat_views = False
 
         if (
-                ObjectKind.TABLE in kind
-                and ObjectKind.MATERIALIZED_VIEW not in kind
+            ObjectKind.TABLE in kind
+            and ObjectKind.MATERIALIZED_VIEW not in kind
         ):
             # see note in _table_options_query
             mat_views = self.get_materialized_view_names(
@@ -1589,8 +1602,8 @@ class TiberoDialect(default.DefaultDialect):
                 params["mat_views"] = mat_views
                 has_mat_views = True
         elif (
-                ObjectKind.TABLE not in kind
-                and ObjectKind.MATERIALIZED_VIEW in kind
+            ObjectKind.TABLE not in kind
+            and ObjectKind.MATERIALIZED_VIEW in kind
         ):
             mat_views = self.get_materialized_view_names(
                 connection, schema, dblink, _normalize=False, **kw
@@ -1639,7 +1652,7 @@ class TiberoDialect(default.DefaultDialect):
         return self._value_or_raise(data, table_name, schema)
 
     def _run_batches(
-            self, connection, query, dblink, returns_long, mappings, all_objects
+        self, connection, query, dblink, returns_long, mappings, all_objects
     ):
         each_batch = 500
         batches = list(all_objects)
@@ -1667,14 +1680,15 @@ class TiberoDialect(default.DefaultDialect):
 
         # 오라클 코드에서는 all_tab_cols에 default_on_null 칼럼이 있지만
         # 티베로에는 없습니다. 그래서 임의의 숫자 99999를 사용했습니다.
+        # 나중에 티베로에 칼럼들이 추가된다면 임의의 숫자를 올바른 숫자로 바꿔주세요.
         if self.server_version_info >= (999999,):
             add_cols = (
                 all_cols.c.default_on_null,
                 sql.case(
                     (all_ids.c.table_name.is_(None), sql.null()),
                     else_=all_ids.c.generation_type
-                          + ","
-                          + all_ids.c.identity_options,
+                    + ","
+                    + all_ids.c.identity_options,
                 ).label("identity_options"),
             )
             join_identity_cols = True
@@ -1704,7 +1718,8 @@ class TiberoDialect(default.DefaultDialect):
                 all_comments.c.comments,
                 all_cols.c.virtual_column,
                 *add_cols,
-            ).select_from(all_cols)
+            )
+            .select_from(all_cols)
             # NOTE: all_col_comments has a row for each column even if no
             # comment is present, so a join could be performed, but there
             # seems to be no difference compared to an outer join
@@ -1738,15 +1753,15 @@ class TiberoDialect(default.DefaultDialect):
 
     @_handle_synonyms_decorator
     def get_multi_columns(
-            self,
-            connection,
-            *,
-            schema,
-            filter_names,
-            scope,
-            kind,
-            dblink=None,
-            **kw,
+        self,
+        connection,
+        *,
+        schema,
+        filter_names,
+        scope,
+        kind,
+        dblink=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -1757,9 +1772,9 @@ class TiberoDialect(default.DefaultDialect):
         query = self._column_query(owner)
 
         if (
-                filter_names
-                and kind is ObjectKind.ANY
-                and scope is ObjectScope.ANY
+            filter_names
+            and kind is ObjectKind.ANY
+            and scope is ObjectScope.ANY
         ):
             all_objects = [self.denormalize_name(n) for n in filter_names]
         else:
@@ -1987,15 +2002,15 @@ class TiberoDialect(default.DefaultDialect):
 
     @_handle_synonyms_decorator
     def get_multi_table_comment(
-            self,
-            connection,
-            *,
-            schema,
-            filter_names,
-            scope,
-            kind,
-            dblink=None,
-            **kw,
+        self,
+        connection,
+        *,
+        schema,
+        filter_names,
+        scope,
+        kind,
+        dblink=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2023,7 +2038,7 @@ class TiberoDialect(default.DefaultDialect):
                 (
                     {"text": comment}
                     if comment is not None
-                       and not comment.startswith(ignore_mat_view)
+                    and not comment.startswith(ignore_mat_view)
                     else default()
                 ),
             )
@@ -2047,10 +2062,31 @@ class TiberoDialect(default.DefaultDialect):
 
     @lru_cache()
     def _index_query(self, owner):
+        # HACK
+        # CASE 문을 사용하여 정규식에 맞는 경우 'SYS'를 붙임
+        # oracle의 dialect._index_query()는 index_name과 index position에 따라 row
+        # order를 결정합니다. 그런데 티베로는 index 이름 짓는 규칙이 오라클이랑 달라서 테스트에서
+        # 실패하는 문제가 발생합니다. 우회방안으로 sql query 실행시 index name을 오라클이랑 비슷하게 변경하고
+        # 변경된 index name으로 순서를 결정하도록 했습니다. 이 order가 중요할 수 있으니 최대한 sqlalchemy의
+        # 행동과 따라하기 위해 변경했으나 솔직히 이 순서가 중요한 것 같지는 않습니다.
+        # 테스트 스위트에서 정답지를 변경하거나 테스트의 동작을 수정할 수도 있지만, Tibero Dialect에서
+        # 코드를 수정하기로 한 이유는, Oracle과 비교해 차이가 발생할 경우 가능한 서버에 가까운 쪽에서 수정하는
+        # 것이 클라이언트 쪽에서 발생할 수 있는 불일치를 최소화할 수 있다고 판단했기 때문입니다.
+        index_name = sql.case(
+            (
+                sql.text(
+                    "REGEXP_LIKE(a_ind_columns.index_name, '^_.*CON\\d+$')"
+                ),
+                sql.literal_column("'SYS'")
+                + dictionary.all_ind_columns.c.index_name,
+            ),
+            else_=dictionary.all_ind_columns.c.index_name,
+        ).label("index_name")
+
         return (
             select(
                 dictionary.all_ind_columns.c.table_name,
-                dictionary.all_ind_columns.c.index_name,
+                index_name,
                 dictionary.all_ind_columns.c.column_name,
                 dictionary.all_indexes.c.index_type,
                 dictionary.all_indexes.c.uniqueness,
@@ -2093,7 +2129,7 @@ class TiberoDialect(default.DefaultDialect):
                 ),
             )
             .order_by(
-                dictionary.all_ind_columns.c.index_name,
+                sql.literal_column("index_name"),
                 dictionary.all_ind_columns.c.column_position,
             )
         )
@@ -2110,13 +2146,32 @@ class TiberoDialect(default.DefaultDialect):
 
         query = self._index_query(owner)
 
-        pks = {
-            row_dict["constraint_name"]
-            for row_dict in self._get_all_constraint_rows(
-                connection, schema, dblink, all_objects, **kw
-            )
-            if row_dict["constraint_type"] == "P"
-        }
+        # NOTE: get_multi_indexes()는 SQLAlchemy에서는 primary
+        #       key index를 제외한 index들만 반환하는 것이 spec인 듯 합니다.
+        #       문서를 보았을 때 그런 말은 없으나 oracle dialect는 그렇게 구현
+        #       되어 있습니다.
+        pks = set()
+        for row_dict in self._get_all_constraint_rows(
+            connection, schema, dblink, all_objects, **kw
+        ):
+            if row_dict["constraint_type"] != "P":
+                continue
+
+            # mview의 index 중에 i_snap$으로 시작하는 index가 있습니다.
+            # oracle에서는 특정 설정없이 mview를 생성하면 새로운 index가
+            # 생성되고 all_constraints view에서 index는 constraint_name과
+            # index_name이 같은 string은 가집니다. 반면에 tibero에서는 원본 테이블의
+            # index에 링크된 i_snap$ index를 사용하는 것을 확인했습니다. 이는 곧,
+            # i_snap$ 인덱스의 경우 all_constraints view에서 constraint_name은
+            # 원본 index 이름을 가지고 index_name이 i_snap$인 것을 의미합니다.
+            # self._index_query()는 constraint_name이 아닌 index_name만을 반환하므로
+            # i_snap$이 primary key index라면 pks에 추가해줘야 합니다.
+            index_name = row_dict.get("index_name")
+            constraint_name = row_dict["constraint_name"]
+            if index_name and index_name != constraint_name:
+                pks.add(index_name)
+            else:
+                pks.add(constraint_name)
 
         # all_ind_expressions.column_expression is LONG
         result = self._run_batches(
@@ -2136,15 +2191,15 @@ class TiberoDialect(default.DefaultDialect):
 
     @_handle_synonyms_decorator
     def get_multi_indexes(
-            self,
-            connection,
-            *,
-            schema,
-            filter_names,
-            scope,
-            kind,
-            dblink=None,
-            **kw,
+        self,
+        connection,
+        *,
+        schema,
+        filter_names,
+        scope,
+        kind,
+        dblink=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2160,7 +2215,7 @@ class TiberoDialect(default.DefaultDialect):
         indexes = defaultdict(dict)
 
         for row_dict in self._get_indexes_rows(
-                connection, schema, dblink, all_objects, **kw
+            connection, schema, dblink, all_objects, **kw
         ):
             index_name = self.normalize_name(row_dict["index_name"])
             table_name = self.normalize_name(row_dict["table_name"])
@@ -2207,9 +2262,9 @@ class TiberoDialect(default.DefaultDialect):
         return (
             (key, list(indexes[key].values()) if key in indexes else default())
             for key in (
-            (schema, self.normalize_name(obj_name))
-            for obj_name in all_objects
-        )
+                (schema, self.normalize_name(obj_name))
+                for obj_name in all_objects
+            )
         )
 
     @reflection.cache
@@ -2231,17 +2286,49 @@ class TiberoDialect(default.DefaultDialect):
     def _constraint_query(self, owner):
         local = dictionary.all_cons_columns.alias("local")
         remote = dictionary.all_cons_columns.alias("remote")
+        # HACK
+        # CASE 문을 사용하여 정규식에 맞는 경우 'SYS'를 붙임
+        # oracle의 dialect._constraint_query()는 constraint_name과 position에 따라 row
+        # order를 결정합니다. 그런데 티베로는 constraint_name 이름 짓는 규칙이 오라클이랑 달라서 테스트에서
+        # 실패하는 문제가 발생합니다. 우회방안으로 sql query 실행시 constraint_name을 오라클이랑 비슷하게 변경하고
+        # 변경된 constraint_name으로 순서를 결정하도록 했습니다. 이 order가 중요할 수 있으니 최대한
+        # sqlalchemy의 행동과 따라하기 위해 변경했으나 솔직히 이 순서가 중요한 것 같지는 않습니다.
+        # 테스트 스위트에서 정답지를 변경하거나 테스트의 동작을 수정할 수도 있지만, Tibero Dialect에서
+        # 코드를 수정하기로 한 이유는, Oracle과 비교해 차이가 발생할 경우 가능한 서버에 가까운 쪽에서 수정하는
+        # 것이 클라이언트 쪽에서 발생할 수 있는 불일치를 최소화할 수 있다고 판단했기 때문입니다.
+        constraint_name = sql.case(
+            (
+                sql.text(
+                    "REGEXP_LIKE(a_constraints.constraint_name, '^_.*CON\\d+$')"
+                ),
+                sql.literal_column("'SYS'")
+                + dictionary.all_constraints.c.constraint_name,
+            ),
+            else_=dictionary.all_constraints.c.constraint_name,
+        ).label("constraint_name")
+        index_name = sql.case(
+            (
+                sql.text(
+                    "REGEXP_LIKE(a_constraints.index_name, '^_.*CON\\d+$')"
+                ),
+                sql.literal_column("'SYS'")
+                + dictionary.all_constraints.c.index_name,
+            ),
+            else_=dictionary.all_constraints.c.index_name,
+        ).label("index_name")
+
         return (
             select(
                 dictionary.all_constraints.c.table_name,
                 dictionary.all_constraints.c.constraint_type,
-                dictionary.all_constraints.c.constraint_name,
+                constraint_name,
                 local.c.column_name.label("local_column"),
                 remote.c.table_name.label("remote_table"),
                 remote.c.column_name.label("remote_column"),
                 remote.c.owner.label("remote_owner"),
                 dictionary.all_constraints.c.search_condition,
                 dictionary.all_constraints.c.delete_rule,
+                index_name,
             )
             .select_from(dictionary.all_constraints)
             .join(
@@ -2273,9 +2360,7 @@ class TiberoDialect(default.DefaultDialect):
                     ("R", "P", "U", "C")
                 ),
             )
-            .order_by(
-                dictionary.all_constraints.c.constraint_name, local.c.position
-            )
+            .order_by(sql.literal_column("constraint_name"), local.c.position)
         )
 
     @reflection.flexi_cache(
@@ -2284,7 +2369,7 @@ class TiberoDialect(default.DefaultDialect):
         ("all_objects", InternalTraversal.dp_string_list),
     )
     def _get_all_constraint_rows(
-            self, connection, schema, dblink, all_objects, **kw
+        self, connection, schema, dblink, all_objects, **kw
     ):
         owner = self.denormalize_schema_name(
             schema or self.default_schema_name
@@ -2306,15 +2391,15 @@ class TiberoDialect(default.DefaultDialect):
 
     @_handle_synonyms_decorator
     def get_multi_pk_constraint(
-            self,
-            connection,
-            *,
-            scope,
-            schema,
-            filter_names,
-            kind,
-            dblink=None,
-            **kw,
+        self,
+        connection,
+        *,
+        scope,
+        schema,
+        filter_names,
+        kind,
+        dblink=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2327,7 +2412,7 @@ class TiberoDialect(default.DefaultDialect):
         default = ReflectionDefaults.pk_constraint
 
         for row_dict in self._get_all_constraint_rows(
-                connection, schema, dblink, all_objects, **kw
+            connection, schema, dblink, all_objects, **kw
         ):
             if row_dict["constraint_type"] != "P":
                 continue
@@ -2345,18 +2430,18 @@ class TiberoDialect(default.DefaultDialect):
         return (
             (key, primary_keys[key] if key in primary_keys else default())
             for key in (
-            (schema, self.normalize_name(obj_name))
-            for obj_name in all_objects
-        )
+                (schema, self.normalize_name(obj_name))
+                for obj_name in all_objects
+            )
         )
 
     @reflection.cache
     def get_foreign_keys(
-            self,
-            connection,
-            table_name,
-            schema=None,
-            **kw,
+        self,
+        connection,
+        table_name,
+        schema=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2373,15 +2458,15 @@ class TiberoDialect(default.DefaultDialect):
 
     @_handle_synonyms_decorator
     def get_multi_foreign_keys(
-            self,
-            connection,
-            *,
-            scope,
-            schema,
-            filter_names,
-            kind,
-            dblink=None,
-            **kw,
+        self,
+        connection,
+        *,
+        scope,
+        schema,
+        filter_names,
+        kind,
+        dblink=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2400,7 +2485,7 @@ class TiberoDialect(default.DefaultDialect):
         fkeys = defaultdict(dict)
 
         for row_dict in self._get_all_constraint_rows(
-                connection, schema, dblink, all_objects, **kw
+            connection, schema, dblink, all_objects, **kw
         ):
             if row_dict["constraint_type"] != "R":
                 continue
@@ -2500,14 +2585,14 @@ class TiberoDialect(default.DefaultDialect):
         return (
             (key, list(fkeys[key].values()) if key in fkeys else default())
             for key in (
-            (schema, self.normalize_name(obj_name))
-            for obj_name in all_objects
-        )
+                (schema, self.normalize_name(obj_name))
+                for obj_name in all_objects
+            )
         )
 
     @reflection.cache
     def get_unique_constraints(
-            self, connection, table_name, schema=None, **kw
+        self, connection, table_name, schema=None, **kw
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2524,15 +2609,15 @@ class TiberoDialect(default.DefaultDialect):
 
     @_handle_synonyms_decorator
     def get_multi_unique_constraints(
-            self,
-            connection,
-            *,
-            scope,
-            schema,
-            filter_names,
-            kind,
-            dblink=None,
-            **kw,
+        self,
+        connection,
+        *,
+        scope,
+        schema,
+        filter_names,
+        kind,
+        dblink=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2551,7 +2636,7 @@ class TiberoDialect(default.DefaultDialect):
         }
 
         for row_dict in self._get_all_constraint_rows(
-                connection, schema, dblink, all_objects, **kw
+            connection, schema, dblink, all_objects, **kw
         ):
             if row_dict["constraint_type"] != "U":
                 continue
@@ -2590,19 +2675,19 @@ class TiberoDialect(default.DefaultDialect):
                 ),
             )
             for key in (
-            (schema, self.normalize_name(obj_name))
-            for obj_name in all_objects
-        )
+                (schema, self.normalize_name(obj_name))
+                for obj_name in all_objects
+            )
         )
 
     @reflection.cache
     def get_view_definition(
-            self,
-            connection,
-            view_name,
-            schema=None,
-            dblink=None,
-            **kw,
+        self,
+        connection,
+        view_name,
+        schema=None,
+        dblink=None,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2648,7 +2733,7 @@ class TiberoDialect(default.DefaultDialect):
 
     @reflection.cache
     def get_check_constraints(
-            self, connection, table_name, schema=None, include_all=False, **kw
+        self, connection, table_name, schema=None, include_all=False, **kw
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``oracle_resolve_synonyms`` to resolve names to synonyms
@@ -2666,16 +2751,16 @@ class TiberoDialect(default.DefaultDialect):
 
     @_handle_synonyms_decorator
     def get_multi_check_constraints(
-            self,
-            connection,
-            *,
-            schema,
-            filter_names,
-            dblink=None,
-            scope,
-            kind,
-            include_all=False,
-            **kw,
+        self,
+        connection,
+        *,
+        schema,
+        filter_names,
+        dblink=None,
+        scope,
+        kind,
+        include_all=False,
+        **kw,
     ):
         """Supported kw arguments are: ``dblink`` to reflect via a db link;
         ``tibero_resolve_synonyms`` to resolve names to synonyms
@@ -2689,7 +2774,7 @@ class TiberoDialect(default.DefaultDialect):
         check_constraints = defaultdict(list)
 
         for row_dict in self._get_all_constraint_rows(
-                connection, schema, dblink, all_objects, **kw
+            connection, schema, dblink, all_objects, **kw
         ):
             if row_dict["constraint_type"] != "C":
                 continue
@@ -2699,7 +2784,7 @@ class TiberoDialect(default.DefaultDialect):
 
             table_checks = check_constraints[(schema, table_name)]
             if constraint_name is not None and (
-                    include_all or not not_null.match(search_condition)
+                include_all or not not_null.match(search_condition)
             ):
                 table_checks.append(
                     {"name": constraint_name, "sqltext": search_condition}
@@ -2717,9 +2802,9 @@ class TiberoDialect(default.DefaultDialect):
                 ),
             )
             for key in (
-            (schema, self.normalize_name(obj_name))
-            for obj_name in all_objects
-        )
+                (schema, self.normalize_name(obj_name))
+                for obj_name in all_objects
+            )
         )
 
     def _list_dblinks(self, connection, dblink=None):

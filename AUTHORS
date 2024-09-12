@@ -1,4 +1,8 @@
-SQLAlchemy Tibero Dialect was created by Yeongbae Jeon.
+SQLAlchemy Tibero Dialect was created by Yeongbae Jeon, with reference to Oracle Dialect.
 
-Major contributing authors include:
-
+Contributing authors include:
+- Woocheol Yang  - Test and Documentation
+- Taekhyeon Kwon - Test and ODBC (analyzed tbODBC code)
+- Jihun Park - Test, ODBC (analyzed tbODBC code), and pyODBC (analyzed pyODBC code)
+- Junhyoung Kim - Test
+- Geunsik Yoon - ODBC (analyzed tbODBC code)

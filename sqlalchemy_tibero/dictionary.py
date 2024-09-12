@@ -10,8 +10,6 @@ from sqlalchemy import Table, MetaData, table, Column, CHAR, VARCHAR
 from .types import DATE
 from .types import LONG
 from .types import NUMBER
-from .types import RAW
-from .types import VARCHAR2
 
 # constants
 DB_LINK_PLACEHOLDER = "__$sa_dblink$__"
@@ -85,7 +83,6 @@ all_sequences = Table(
     Column("session_flag", VARCHAR(1)),
     Column("scale_flag", VARCHAR(1)),
     Column("extend_flag", VARCHAR(1)),
-
 ).alias("a_sequences")
 
 all_users = Table(
@@ -236,8 +233,10 @@ all_indexes = Table(
     Column("last_analyzed", DATE),
     Column("partitioned", VARCHAR(3)),
     Column("buffer_pool", VARCHAR(7)),
-    Column("generated_by_system", VARCHAR(1)),  # Tibero만 이 칼럼을 가지고 있습니다.
-    Column("referential", VARCHAR(3)),          # Tibero만 이 칼럼을 가지고 있습니다.
+    Column(
+        "generated_by_system", VARCHAR(1)
+    ),  # Tibero만 이 칼럼을 가지고 있습니다.
+    Column("referential", VARCHAR(3)),  # Tibero만 이 칼럼을 가지고 있습니다.
     Column("max_extents", NUMBER),
     Column("include_column", NUMBER),
     Column("min_extents", NUMBER),
@@ -267,7 +266,9 @@ all_constraints = Table(
     dictionary_meta,
     Column("owner", VARCHAR(128)),
     Column("constraint_name", VARCHAR(128)),
-    Column("con_type", VARCHAR(22)),            # Tibero만 이 칼럼을 가지고 있습니다.
+    Column(
+        "con_type", VARCHAR(22)
+    ),  # Tibero만 이 칼럼을 가지고 있습니다. constraint_type을 쉽게 보기 위한 column
     Column("constraint_type", VARCHAR(1)),
     Column("table_name", VARCHAR(128)),
     Column("search_condition", VARCHAR(65532)),

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a7] - 2024-09-12
+
+### Added
+- 설치 가이드 문서 추가, 23a340292d
+- 개발을 위한 설치 도구를 setup.cfg에 명시, 54b15639df
+### Changed
+- Tibero Dialect에 맞는 README.md 파일 생성, a97788d52f
+- Tibero Dialect에 맞게 작성되지 않은 문서 지우기, 62eab6ed92
+- AUTHORS과 LICENSE 파일 업데이트, b2cfc0f820
+### Fixed
+
 ## [2.0.0a6] - 2024-09-12
 
 ### Added

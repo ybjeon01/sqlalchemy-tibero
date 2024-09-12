@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a9] - 2024-09-13
+
+### Added
+### Changed
+- README.md에 test-branch에 대한 설명 추가, 35b710b5cd
+### Fixed
+- setup.cfg에 잘못 명시된 long_description file 포멧 변경, 4bfb3b482d
+
 ## [2.0.0a8] - 2024-09-12
 
 ### Added

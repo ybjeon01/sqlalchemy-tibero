@@ -9,20 +9,20 @@ from sqlalchemy.sql.sqltypes import VARCHAR
 
 from . import base  # noqa
 from . import pyodbc
-from .types import BFILE
-from .types import BINARY_DOUBLE
-from .types import BINARY_FLOAT
-from .types import DATE
-from .types import FLOAT
-from .types import INTERVAL
-from .types import LONG
-from .types import NCLOB
-from .types import NUMBER
-from .types import NVARCHAR2
-from .types import RAW
-from .types import ROWID
-from .types import TIMESTAMP
-from .types import VARCHAR2
+from .base import BFILE
+from .base import BINARY_DOUBLE
+from .base import BINARY_FLOAT
+from .base import DATE
+from .base import FLOAT
+from .base import INTERVAL
+from .base import LONG
+from .base import NCLOB
+from .base import NUMBER
+from .base import NVARCHAR2
+from .base import RAW
+from .base import ROWID
+from .base import TIMESTAMP
+from .base import VARCHAR2
 
 # TODO: 비동기 프로그램밍 지원하기
 # Alias oracledb also as oracledb_async

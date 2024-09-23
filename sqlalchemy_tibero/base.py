@@ -9,7 +9,6 @@ from functools import lru_cache
 from functools import wraps
 import re
 
-
 from sqlalchemy import util
 from sqlalchemy import exc
 from sqlalchemy import sql
@@ -40,8 +39,25 @@ from sqlalchemy.types import INTEGER
 from sqlalchemy.types import DOUBLE_PRECISION
 from sqlalchemy.types import REAL
 
+from . import dictionary
+from .types import _TiberoBoolean
+from .types import _TiberoDate
+from .types import BFILE
+from .types import BINARY_DOUBLE
+from .types import BINARY_FLOAT
+from .types import DATE
+from .types import FLOAT
+from .types import INTERVAL
+from .types import LONG
+from .types import NCLOB
+from .types import NUMBER
+from .types import NVARCHAR2  # noqa
+from .types import TiberoRaw  # noqa
+from .types import RAW
+from .types import ROWID  # noqa
+from .types import TIMESTAMP
+from .types import VARCHAR2  # noqa
 
-from . import types, dictionary
 
 # TODO: 여기 있는 모든 키워드가 티베로에서 지원되는지 확인하기
 #       지원안되는 게 몇 개 있더라도 뺴면 안됩니다. 나중에 지원될 수 있기 때문입니다.
@@ -62,10 +78,10 @@ NO_ARG_FNS = set(
 )
 
 colspecs = {
-    sqltypes.Boolean: types._TiberoBoolean,
-    sqltypes.Interval: types.INTERVAL,
-    sqltypes.DateTime: types.DATE,
-    sqltypes.Date: types._TiberoDate,
+    sqltypes.Boolean: _TiberoBoolean,
+    sqltypes.Interval: INTERVAL,
+    sqltypes.DateTime: DATE,
+    sqltypes.Date: _TiberoDate,
 }
 
 # TODO: 여기 있는 모든 타입들이 티베로에서 지원되는지 확인하기
@@ -79,24 +95,24 @@ ischema_names = {
     "NVARCHAR": sqltypes.NVARCHAR,
     "CHAR": sqltypes.CHAR,
     "NCHAR": sqltypes.NCHAR,
-    "DATE": types.DATE,
-    "NUMBER": types.NUMBER,
+    "DATE": DATE,
+    "NUMBER": NUMBER,
     "BLOB": sqltypes.BLOB,
-    "BFILE": types.BFILE,
+    "BFILE": BFILE,
     "CLOB": sqltypes.CLOB,
-    "NCLOB": types.NCLOB,
-    "TIMESTAMP": types.TIMESTAMP,
-    "TIMESTAMP WITH TIME ZONE": types.TIMESTAMP,
-    "TIMESTAMP WITH LOCAL TIME ZONE": types.TIMESTAMP,
-    "INTERVAL DAY TO SECOND": types.INTERVAL,
-    "RAW": types.RAW,
-    "FLOAT": types.FLOAT,
+    "NCLOB": NCLOB,
+    "TIMESTAMP": TIMESTAMP,
+    "TIMESTAMP WITH TIME ZONE": TIMESTAMP,
+    "TIMESTAMP WITH LOCAL TIME ZONE": TIMESTAMP,
+    "INTERVAL DAY TO SECOND": INTERVAL,
+    "RAW": RAW,
+    "FLOAT": FLOAT,
     "DOUBLE PRECISION": sqltypes.DOUBLE_PRECISION,
     "REAL": sqltypes.REAL,
-    "LONG": types.LONG,
-    "BINARY_DOUBLE": types.BINARY_DOUBLE,
-    "BINARY_FLOAT": types.BINARY_FLOAT,
-    "ROWID": types.ROWID,
+    "LONG": LONG,
+    "BINARY_DOUBLE": BINARY_DOUBLE,
+    "BINARY_FLOAT": BINARY_FLOAT,
+    "ROWID": ROWID,
 }
 
 
@@ -1829,7 +1845,7 @@ class TiberoDialect(default.DefaultDialect):
                 if precision is None and scale == 0:
                     coltype = INTEGER()
                 else:
-                    coltype = types.NUMBER(precision, scale)
+                    coltype = NUMBER(precision, scale)
             elif coltype == "FLOAT":
                 # https://docs.oracle.com/cd/B14117_01/server.101/b10758/sqlqr06.htm
                 if precision == 126:
@@ -1842,7 +1858,7 @@ class TiberoDialect(default.DefaultDialect):
                     coltype = REAL()
                 else:
                     # non standard precision
-                    coltype = types.FLOAT(binary_precision=precision)
+                    coltype = FLOAT(binary_precision=precision)
 
             elif coltype in ("VARCHAR", "NVARCHAR", "CHAR", "NCHAR"):
                 # Oracle에서 VARCHAR 는 자동으로 VARCHAR2로 변환이 되는데
@@ -1853,9 +1869,9 @@ class TiberoDialect(default.DefaultDialect):
                 char_length = maybe_int(row_dict["char_length"])
                 coltype = self.ischema_names.get(coltype)(char_length)
             elif "WITH TIME ZONE" in coltype:
-                coltype = types.TIMESTAMP(timezone=True)
+                coltype = TIMESTAMP(timezone=True)
             elif "WITH LOCAL TIME ZONE" in coltype:
-                coltype = types.TIMESTAMP(local_timezone=True)
+                coltype = TIMESTAMP(local_timezone=True)
             else:
                 coltype = re.sub(remove_size, "", coltype)
                 try:

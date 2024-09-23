@@ -611,6 +611,16 @@ class DefaultRequirements(SuiteRequirements):
         )
 
     @property
+    def inline_check_constraint_reflection(self):
+        return only_on(
+            [
+                "postgresql",
+                "sqlite",
+                "oracle",
+            ]
+        )
+
+    @property
     def check_constraint_reflection(self):
         return only_on(
             [
@@ -883,6 +893,9 @@ class DefaultRequirements(SuiteRequirements):
             + self.fail_on_oracledb_thin
         )
 
+    # NOTE: 현재 oracle+oracledb는 two phase recovery 테스트를 진행하지만
+    # tibero는 pyodbc를 사용하기에 지원이 안됩니다.
+    # 참고 커밋: https://github.com/sqlalchemy/sqlalchemy/commit/3a4f8cd8760a6901880310bef7ced7e4b424d375
     @property
     def two_phase_recovery(self):
         return self.two_phase_transactions + (
@@ -2065,3 +2078,38 @@ class DefaultRequirements(SuiteRequirements):
         statement.
         """
         return only_on(["mssql"])
+
+    @property
+    def supports_bitwise_and(self):
+        """Target database supports bitwise and"""
+        return exclusions.open()
+
+    # NOTE: oracle 21부터 bitxor과 bitor이 지원되는기 때문에 이 테스트를
+    #       진행하지만 아직 tibero 7에서는 지원하지 않습니다. 그래서
+    #       fails_on(["oracle<8"])를 사용했습니다.
+    #
+    # https://stackoverflow.com/questions/30044605/what-is-a-good-way-to-do-bitor-in-pl-sql
+    @property
+    def supports_bitwise_or(self):
+        """Target database supports bitwise or"""
+        return fails_on(["oracle<8"])
+
+    @property
+    def supports_bitwise_not(self):
+        """Target database supports bitwise not"""
+        return fails_on(["oracle", "mysql", "mariadb"])
+
+    # NOTE: oracle 21부터 bitxor과 bitor이 지원되는기 때문에 이 테스트를
+    #       진행하지만 아직 tibero 7에서는 지원하지 않습니다. 그래서
+    #       fails_on(["oracle<8"])를 사용했습니다.
+    #
+    # https://stackoverflow.com/questions/30044605/what-is-a-good-way-to-do-bitor-in-pl-sql
+    @property
+    def supports_bitwise_xor(self):
+        """Target database supports bitwise xor"""
+        return fails_on(["oracle<8"])
+
+    @property
+    def supports_bitwise_shift(self):
+        """Target database supports bitwise left or right shift"""
+        return fails_on(["oracle"])

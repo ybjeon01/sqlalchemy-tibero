@@ -729,6 +729,39 @@ class TiberoCompiler(compiler.SQLCompiler):
     def visit_aggregate_strings_func(self, fn, **kw):
         return "LISTAGG%s" % self.function_argspec(fn, **kw)
 
+    def _visit_bitwise(self, binary, fn_name, custom_right=None, **kw):
+        left = self.process(binary.left, **kw)
+        right = self.process(
+            custom_right if custom_right is not None else binary.right, **kw
+        )
+        return f"{fn_name}({left}, {right})"
+
+    # TODO: oracle 21부터 bitxor과 bitor이 지원되지만 아직 tibero 7
+    #       에서는 지원하지 않습니다. Tibero 7에서 지원되기 시작한다면
+    #       requirements.py의 supports_bitwise_xor() 메서드를 수정해
+    #       주세요.
+    def visit_bitwise_xor_op_binary(self, binary, operator, **kw):
+        return self._visit_bitwise(binary, "BITXOR", **kw)
+
+    # TODO: oracle 21부터 bitxor과 bitor이 지원되지만 아직 tibero 7
+    #       에서는 지원하지 않습니다. Tibero 7에서 지원되기 시작한다면
+    #       requirements.py의 supports_bitwise_or() 메서드를 수정해
+    #       주세요.
+    def visit_bitwise_or_op_binary(self, binary, operator, **kw):
+        return self._visit_bitwise(binary, "BITOR", **kw)
+
+    def visit_bitwise_and_op_binary(self, binary, operator, **kw):
+        return self._visit_bitwise(binary, "BITAND", **kw)
+
+    def visit_bitwise_rshift_op_binary(self, binary, operator, **kw):
+        raise exc.CompileError("Cannot compile bitwise_rshift in tibero")
+
+    def visit_bitwise_lshift_op_binary(self, binary, operator, **kw):
+        raise exc.CompileError("Cannot compile bitwise_lshift in tibero")
+
+    def visit_bitwise_not_op_unary_operator(self, element, operator, **kw):
+        raise exc.CompileError("Cannot compile bitwise_not in tibero")
+
 
 class TiberoDDLCompiler(compiler.DDLCompiler):
     def define_constraint_cascades(self, constraint):

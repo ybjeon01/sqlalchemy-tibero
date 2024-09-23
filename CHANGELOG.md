@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a10] - 2024-09-23
+
+### Added
+- Tibero Compiler용 테스트 파일 추가, 43205e7020
+- TiberoDialect에 새로운 연산자 추가, 7d0623269c
+### Changed
+- 오래된 링크 업데이트, db4427bd66
+### Fixed
+
+
+
 ## [2.0.0a9] - 2024-09-13
 
 ### Added

@@ -771,7 +771,7 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
 
         # oracle and tibero have no ON UPDATE CASCADE -
         # its only available via triggers
-        # https://asktom.oracle.com/tkyte/update_cascade/index.html
+        # https://web.archive.org/web/20090317041251/https://asktom.oracle.com/tkyte/update_cascade/index.html
         if constraint.onupdate is not None:
             util.warn(
                 "Tibero does not contain native UPDATE CASCADE "
@@ -1016,10 +1016,6 @@ class TiberoDialect(default.DefaultDialect):
         self.use_ansi = use_ansi
         self.optimize_limits = optimize_limits
         self.exclude_tablespaces = exclude_tablespaces
-
-        # TODO: tibero 7 패치셋 version에 따라 지원 여부 확인하기
-        #       enable_offset_fetch는 oracle version에 따라 지원 여부가 다른 것 같은데
-        #       tibero 7에서는 어떤지 확인하기
         self.enable_offset_fetch = self._supports_offset_fetch = (
             enable_offset_fetch
         )
@@ -1027,33 +1023,30 @@ class TiberoDialect(default.DefaultDialect):
     def initialize(self, connection):
         super().initialize(connection)
 
-        # TODO: tibero 7 패치셋 version에 따라 지원 여부 확인하기
-        self.supports_identity_columns = True
-        # TODO: tibero 7 패치셋 version에 따라 지원 여부 확인하기
-        self._supports_offset_fetch = self.enable_offset_fetch
+        self.supports_identity_columns = self.server_version_info >= (7,)
+        self._supports_offset_fetch = (
+            self.enable_offset_fetch and self.server_version_info >= (7,)
+        )
 
     @property
     def _supports_table_compression(self):
-        # TODO: tibero 7 패치셋 version에 따라 지원 여부 확인하기
-        return True
+        return self.server_version_info and self.server_version_info >= (7,)
 
     @property
     def _supports_table_compress_for(self):
-        # TODO: tibero 7 패치셋 version에 따라 지원 여부 확인하기
-        return True
+        return self.server_version_info and self.server_version_info >= (7,)
 
     @property
     def _supports_char_length(self):
-        # TODO: tibero 7 패치셋 version에 따라 지원 여부 확인하기
-        return True
+        return self.server_version_info >= (7,)
 
     @property
     def _supports_update_returning_computed_cols(self):
-        return True
+        return self.server_version_info and self.server_version_info >= (7,)
 
     @property
     def _supports_except_all(self):
-        return False
+        return self.server_version_info and self.server_version_info >= (7,)
 
     def do_release_savepoint(self, connection, name):
         # Like Oracle, Tibero does not support RELEASE SAVEPOINT

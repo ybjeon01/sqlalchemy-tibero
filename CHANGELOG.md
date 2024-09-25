@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a11] - 2024-09-25
+
+### Added
+- 테스트 문서 추가 및 원본 문서 수정, 6e768155db
+  - sqlalchemy repo의 test directory를 사용해서 tibero dialect를
+    테스트하는 문서 추가 (test suite가 아님)
+  - 잘못 표기된 지원되는 python, pyodbc, sqlalchemy version을 수정
+### Changed
+### Fixed
+
 ## [2.0.0a10] - 2024-09-23
 
 ### Added
@@ -13,8 +23,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 - 오래된 링크 업데이트, db4427bd66
 ### Fixed
-
-
 
 ## [2.0.0a9] - 2024-09-13
 

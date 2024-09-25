@@ -9,7 +9,8 @@
 - [5. SQLAlchemy-tibero 설치](#SQLAlchemy-tibero-설치)
 - [6. tbdsn 설정](#tbdsn-설정)
 - [7. SQLAlchemy-tibero 동작 테스트](#SQLAlchemy-tibero-동작-테스트)
-- [8. NOTE](#NOTE)
+- [8. TroubleShooting](#TroubleShooting)
+- [9. NOTE](#NOTE)
 
 
 ## 개요
@@ -20,13 +21,11 @@ Tibero Dialect 는 ODBC 를 사용하는 pyodbc 드라이버를 통해 구현이
 
 Tibero Dialect 를 사용하기 위해서 아래와 같은 요구 사항을 충족해야 합니다.
 
-- python 3.7 이상
-- pyodbc 4.x 이상
+- python 3.8 이상
+- pyodbc 5.x 이상
 - sqlalchemy 2.0 이상
 - Tibero 및 Tibero ODBC Driver 7.x 이상
 
-
-* 참고 : pyodbc 4.x 버전은 python 3.7 버전과 호환되며, pyodbc 5.x 버전은 python 3.8 버전 이상에서만 호환됩니다.
 * 참고 : Tibero 및 Tibero ODBC 드라이버는 7.2 버전 기준으로 개발되어 해당 버전에서 호환성이 가장 높습니다.
 
 
@@ -224,6 +223,28 @@ for user in users:
 # 세션 종료
 session.close()
 ```
+
+---
+
+## TroubleShooting
+
+### 1. pyodbc 4.x 및 SQLAlchemy 1.x.x 설치 문제
+
+아래 명령어로 pyodbc와 SQLAlchemy의 설치 여부 및 버전을 확인합니다
+
+```bash
+pip list 
+```
+
+pyodbc 버전이 5.0 미만이거나 SQLAlchemy 버전이 2.0 미만인 경우 문제가 발생할 수 있습니다.
+지원되지 않는 버전을 삭제하고 다음 명령어를 통해 Tibero Dialect를 다시 설치해주시기 바랍니다.
+
+```bash
+pip uninstall pyodbc
+pip uninstall sqlalchemy
+```
+
+---
 
 ## NOTE
 

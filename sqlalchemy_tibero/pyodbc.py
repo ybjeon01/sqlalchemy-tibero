@@ -395,7 +395,6 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     def __init__(
         self,
         auto_convert_lobs=True,
-        coerce_to_decimal=True,
         arraysize=50,
         encoding_errors=None,
         threaded=None,
@@ -422,7 +421,6 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         if threaded is not None:
             self._cx_tibero_threaded = threaded
         self.auto_convert_lobs = auto_convert_lobs
-        self.coerce_to_decimal = coerce_to_decimal
         self.include_set_input_sizes = {
             NCLOB,
             CLOB,

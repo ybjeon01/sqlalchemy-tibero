@@ -313,14 +313,14 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     supports_sane_multi_rowcount = True
 
     # OracleDialect_cx_oracle에서는 아래 4개의 항목 모두 True
-    insert_executemany_returning = False
+    # TODO: insert_executemany_returning은
+    #       test/orm/test_composites.py::PointTest::test_bulk_insert
+    #       을 통해 작동한다는 것을 알았습니다. 하지만 나머지 3개는 아직 확인을 못했기
+    #       때문에 False로 두었습니다.
+    insert_executemany_returning = True
     insert_executemany_returning_sort_by_parameter_order = False
     update_executemany_returning = False
     delete_executemany_returning = False
-
-    insert_returning = False  # OracleDialect에서는 True
-    update_returning = False  # OracleDialect에서는 True
-    delete_returning = False  # OracleDialect에서는 True
 
     bind_typing = interfaces.BindTyping.SETINPUTSIZES
 

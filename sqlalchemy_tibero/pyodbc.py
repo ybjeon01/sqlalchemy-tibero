@@ -1,5 +1,5 @@
 # tibero/pyodbc.py
-# Copyright (C) 2005-2012 the SQLAlchemy authors and contributors <see AUTHORS file>
+# Copyright (C) 2024-2024 the SQLAlchemy authors and contributors <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
@@ -23,7 +23,6 @@ from sqlalchemy.sql.sqltypes import BLOB
 from sqlalchemy.sql.sqltypes import CLOB
 from sqlalchemy.sql.sqltypes import NCHAR
 from sqlalchemy.sql.sqltypes import TIMESTAMP
-
 
 from .types import NCLOB
 from . import types
@@ -85,6 +84,8 @@ class _TiberoNumeric(sqltypes.Numeric):
 
 class _TiberoUUID(sqltypes.Uuid):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.STRING
 
@@ -92,6 +93,7 @@ class _TiberoUUID(sqltypes.Uuid):
 class _TiberoBinaryFloat(_TiberoNumeric):
     pass
 
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.NATIVE_FLOAT
 
@@ -140,30 +142,40 @@ class _LOBDataType:
 # here are inconsistent and not very good
 class _TiberoChar(sqltypes.CHAR):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.FIXED_CHAR
 
 
 class _TiberoNChar(sqltypes.NCHAR):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.FIXED_NCHAR
 
 
 class _TiberoUnicodeStringNCHAR(types.NVARCHAR2):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.NCHAR
 
 
 class _TiberoUnicodeStringCHAR(sqltypes.Unicode):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.LONG_STRING
 
 
 class _TiberoUnicodeTextNCLOB(_LOBDataType, types.NCLOB):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     # previously, this was dbapi.NCLOB.
     #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
@@ -173,6 +185,8 @@ class _TiberoUnicodeTextNCLOB(_LOBDataType, types.NCLOB):
 
 class _TiberoUnicodeTextCLOB(_LOBDataType, sqltypes.UnicodeText):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     # previously, this was dbapi.CLOB.
     #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
@@ -182,6 +196,8 @@ class _TiberoUnicodeTextCLOB(_LOBDataType, sqltypes.UnicodeText):
 
 class _TiberoText(_LOBDataType, sqltypes.Text):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     # previously, this was dbapi.CLOB.
     #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
@@ -191,6 +207,8 @@ class _TiberoText(_LOBDataType, sqltypes.Text):
 
 class _TiberoLong(_LOBDataType, types.LONG):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.LONG_STRING
 
@@ -211,6 +229,7 @@ class _TiberoEnum(sqltypes.Enum):
 
 
 class _TiberoBinary(_LOBDataType, sqltypes.LargeBinary):
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     # previously, this was dbapi.BLOB.
     #     # DB_TYPE_RAW will instead be passed to setinputsizes()
@@ -286,6 +305,8 @@ class _TiberoRaw(types.RAW):
 
 class _TiberoRowid(types.ROWID):
     pass
+
+    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.ROWID
 

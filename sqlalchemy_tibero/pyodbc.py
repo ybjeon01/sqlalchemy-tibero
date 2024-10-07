@@ -4,24 +4,14 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
-"""
-Support for TmaxSoft Tibero via pyodbc.
-
-pyodbc is available at:
-    http://pypi.python.org/pypi/pyodbc/
-
-Connecting
-^^^^^^^^^^
-Examples of pyodbc connection string URLs:
-* ``tibero+pyodbc://mydsn`` - connects using the specified DSN named ``mydsn``.
-"""
-
+import datetime
 import os
 import decimal
 
 import pyodbc
 
 from sqlalchemy import util
+from sqlalchemy import func
 from sqlalchemy.engine import interfaces
 from sqlalchemy.engine import processors
 from sqlalchemy.engine.interfaces import DBAPIConnection
@@ -228,9 +218,56 @@ class _TiberoBinary(_LOBDataType, sqltypes.LargeBinary):
 
 
 class _TiberoInterval(types.INTERVAL):
-    pass
-    # def get_dbapi_type(self, dbapi):
-    #     return dbapi.INTERVAL
+    def bind_processor(self, dialect):
+        def process(value: datetime.timedelta) -> str:
+            # timedelta에서 days, seconds, microseconds 추출
+            days = value.days
+            seconds = value.seconds
+
+            # 시, 분, 초로 변환
+            h = seconds // 3600
+            m = (seconds % 3600) // 60
+            s = seconds % 60
+            ms = value.microseconds
+
+            # 마이크로초를 소수점 이하 6자리로 변환
+            return f"{days} {h}:{m}:{s}.{ms}"
+
+        return process
+
+    def bind_expression(self, bindparam):
+        return func.TO_DSINTERVAL(bindparam)
+
+    @staticmethod
+    def _add_pyodbc_output_converter(conn):
+        def handler(dto: bytes):
+            interval_str = dto.decode()
+            days, time_str = interval_str.split()
+
+            days = int(days)
+            hours, minutes, rest = time_str.split(":")
+            hours = int(hours)
+            minutes = int(minutes)
+
+            if "." in rest:
+                seconds, microseconds = map(int, rest.split("."))
+            else:
+                seconds = int(rest)
+                microseconds = 0
+
+            # timedelta 객체 생성
+            return datetime.timedelta(
+                days=days,
+                hours=hours,
+                minutes=minutes,
+                seconds=seconds,
+                microseconds=microseconds,
+            )
+
+        conn.add_output_converter(pyodbc.SQL_INTERVAL_DAY_TO_SECOND, handler)
+
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_INTERVAL_DAY_TO_SECOND
 
 
 class _TiberoRaw(types.RAW):
@@ -439,6 +476,8 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         def on_connect(conn):
             if super_ is not None:
                 super_(conn)
+
+            _TiberoInterval._add_pyodbc_output_converter(conn)
 
             # declare Unicode encoding for pyodbc as per
             #   https://github.com/mkleehammer/pyodbc/wiki/Unicode

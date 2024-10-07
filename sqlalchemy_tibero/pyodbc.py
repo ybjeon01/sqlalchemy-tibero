@@ -70,7 +70,17 @@ class _TiberoNumeric(sqltypes.Numeric):
             return processors.to_float
 
     def result_processor(self, dialect, coltype):
-        return None
+        if self.asdecimal:
+            return processors.to_decimal_processor_factory(
+                decimal.Decimal,
+                (
+                    self.scale
+                    if self.scale is not None
+                    else self._default_decimal_return_scale
+                ),
+            )
+        else:
+            return processors.to_float
 
 
 class _TiberoUUID(sqltypes.Uuid):
@@ -321,7 +331,13 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         {
             sqltypes.TIMESTAMP: _PYODBCTiberoTIMESTAMP,
             sqltypes.Numeric: _TiberoNumeric,
-            sqltypes.Float: _TiberoNumeric,
+            # Oracle의 경우 sqltypes.Float: _OracleNumeric입니다.
+            # _OracleNumeric 클래스내 asdecimal 기능이 제거가 되었는데
+            # 이는 oracle driver에 output type handler 기능이 있기 때문에
+            # 입니다. 하지만 pyodbc의 경우 output type handler 기능이 없기 때문에
+            # 클래스의 asdecimal 구현이 꼭 필요합니다. 그래서 _TiberoFloat 클래스로
+            # 맵핑했습니다.
+            sqltypes.Float: types.FLOAT,
             types.BINARY_FLOAT: _TiberoBINARY_FLOAT,
             types.BINARY_DOUBLE: _TiberoBINARY_DOUBLE,
             sqltypes.Integer: _TiberoInteger,

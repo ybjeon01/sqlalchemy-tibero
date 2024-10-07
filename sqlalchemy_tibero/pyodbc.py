@@ -346,6 +346,35 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             types.ROWID: _TiberoRowid,
         },
     )
+    #####################
+    #### New Section ####
+    #####################
+    # 이 부분부터는 oracle_cx와 oracledb class와 완전 다르게 동작하는 부분을 추가한 섹션입니다.
+
+    # https://docs.sqlalchemy.org/en/20/core/connections.html#engine-insertmanyvalues
+    # https://docs.sqlalchemy.org/en/20/core/internals.html#sqlalchemy.engine.default.DefaultDialect.supports_multivalues_insert
+    # https://docs.sqlalchemy.org/en/20/core/internals.html#sqlalchemy.engine.default.DefaultDialect.use_insertmanyvalues
+    # https://docs.sqlalchemy.org/en/20/core/internals.html#sqlalchemy.engine.default.DefaultDialect.insert_executemany_returning
+    # https://docs.sqlalchemy.org/en/20/core/internals.html#sqlalchemy.engine.default.DefaultDialect.insert_returning
+    #
+    # oracledb와 cx_Oracle의 execute_many가 이미 multivalues_insert처럼 최적화하는 기능을
+    # 제공하므로, supports_multivalues_insert나 use_insertmanyvalues를 True로 설정할
+    # 필요가 없습니다. 다만, execute_many에 사용되는 쿼리와 multivalues_insert 플래그의 영향을
+    # 받아 생성되는 SQL 쿼리는 동일하지 않습니다.
+    #
+    # multivalues_insert는
+    # "insert into table(a, b, c) values (...), (...), (...)" 처럼
+    # "(...)" 부분을 하나의 query string안에 여러번 넣을 것을 의미합니다. string의 길이는
+    # 길지만 한번의 통신으로 모든 값들을 보낼 수 있습니다. execute_many에서는
+    # "insert into table(a, b, c) values (?, ?, ?)"같이 짧은 query와
+    # 여러 parameter를 사용해 한번의 통신을 한 것을 의미합니다.
+
+    supports_multivalues_insert = True
+    use_insertmanyvalues = True
+
+    #############################
+    #### End Of  New Section ####
+    #############################
 
     def __init__(
         self,

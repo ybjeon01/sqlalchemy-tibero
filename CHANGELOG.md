@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a12] - 2024-10-07
+
+### Added
+- pyodbc에서 지원하지 않는 datetime.timedelta 우회 지원,  961d5c1b9c
+- multi value insert 지원하기, ca35abcee5
+- returning into 기능 추가, 12d3557541
+### Changed
+- pyodbc 제한으로 제공되지 않는 coerce_to_decimal 파라미터 제거, 7058b091a9
+### Fixed
+- Numeric type의 as_decimal parameter 버그 수정, 7516cf6090
+
 ## [2.0.0a11] - 2024-09-25
 
 ### Added

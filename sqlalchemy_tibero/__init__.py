@@ -60,7 +60,7 @@ __all__ = (
     "REAL",
 )
 
-__version__ = "2.0.0a11"
+__version__ = "2.0.0a12"
 
 # TODO: 내가 (전영배)가 알기로는 setup.py에 다음의 라인을 추가하면 자동으로 register되는 것으로 알고 있습니다.
 #         entry_points = {

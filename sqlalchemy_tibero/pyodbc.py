@@ -297,7 +297,11 @@ class TiberoCompiler_pyodbc(TiberoCompiler):
 
 
 class TiberoExecutionContext_pyodbc(TiberoExecutionContext):
-    pass
+    def create_cursor(self):
+        c = self._dbapi_connection.cursor()
+        if self.dialect.arraysize:
+            c.arraysize = self.dialect.arraysize
+        return c
 
 
 class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
@@ -396,10 +400,7 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
 
     def __init__(
         self,
-        auto_convert_lobs=True,
         arraysize=50,
-        encoding_errors=None,
-        threaded=None,
         char_encoding="UTF-8",
         wchar_encoding="UTF-8",
         **kwargs,
@@ -414,22 +415,13 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         os.environ.setdefault("TB_NLS_LANG", "UTF8")
 
         TiberoDialect.__init__(self, **kwargs)
+        # arraysize는 원래 oracle driver의 cursor.var를 통해 구현되었으나
+        # pyodbc에서 cursor.arraysize를 통해 비슷하게 구현했습니다.
         self.arraysize = arraysize
-        self.encoding_errors = encoding_errors
-        if encoding_errors:
-            self._cursor_var_unicode_kwargs = {
-                "encodingErrors": encoding_errors
-            }
-        if threaded is not None:
-            self._cx_tibero_threaded = threaded
-        self.auto_convert_lobs = auto_convert_lobs
-        self.include_set_input_sizes = {
-            NCLOB,
-            CLOB,
-            NCHAR,
-            BLOB,
-            TIMESTAMP,
-        }
+        if self._use_nchar_for_unicode:
+            self.colspecs = self.colspecs.copy()
+            self.colspecs[sqltypes.Unicode] = _TiberoUnicodeStringNCHAR
+            self.colspecs[sqltypes.UnicodeText] = _TiberoUnicodeTextNCLOB
 
     def get_isolation_level(
         self, dbapi_connection: DBAPIConnection

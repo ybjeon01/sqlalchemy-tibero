@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a13] - 2024-10-14
+
+### Added
+- setinputsizes 사용할때 올바른 타입으로 연결, 77b227141a
+  - 지금까지는 setupinputsizes 자체를 사용안했습니다.
+- test/test_types.py 파일 추가, cda729d8a7
+### Changed
+- 데이터베이스에서 메타 정보를 얻을 때 Number(38, 0)이 sqlalchemy에서 Integer로 사용되도록 결정, d1254515c2
+- pyodbc에서 사용가능한 oracle dialect 옵션만 남기기, a647342e88
+### Fixed
+- 문자 수 기준 char, varchar 지원안되는 버그 해결, 1af2a337fa
+- executemany()를 사용시 cursor.rowcount가 잘못된 정보를 가지고 있는 문제 우회, 066444a7b1 
+- requirements.py 파일 수정, 01c0a6d119 
+  - pyodbc 사용으로 인해 oracle에서 실패한 것이 성공해서 수정했습니다.
+- pyodbc 모듈에서 dialect라는 public property 추가, 7487b468ff
+  - 테스트할 때 쓰이기에 추가했습니다.
+
 ## [2.0.0a12] - 2024-10-07
 
 ### Added

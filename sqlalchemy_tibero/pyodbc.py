@@ -527,3 +527,6 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             conn.setdecoding(pyodbc.SQL_WCHAR, encoding=self.wchar_encoding)
 
         return on_connect
+
+
+dialect = TiberoDialect_pyodbc

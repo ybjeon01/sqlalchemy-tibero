@@ -19,12 +19,7 @@ from sqlalchemy.engine.interfaces import IsolationLevel
 from sqlalchemy import exc
 from sqlalchemy.connectors.pyodbc import PyODBCConnector
 from sqlalchemy.sql import sqltypes
-from sqlalchemy.sql.sqltypes import BLOB
-from sqlalchemy.sql.sqltypes import CLOB
-from sqlalchemy.sql.sqltypes import NCHAR
-from sqlalchemy.sql.sqltypes import TIMESTAMP
 
-from .types import NCLOB
 from . import types
 from .base import TiberoExecutionContext, TiberoDialect, TiberoCompiler
 
@@ -85,7 +80,8 @@ class _TiberoNumeric(sqltypes.Numeric):
 class _TiberoUUID(sqltypes.Uuid):
     pass
 
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
+    # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
+    # 사용해야 할지 자세히 조사를 못했기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.STRING
 
@@ -93,7 +89,8 @@ class _TiberoUUID(sqltypes.Uuid):
 class _TiberoBinaryFloat(_TiberoNumeric):
     pass
 
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
+    # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
+    # 사용해야 할지 자세히 조사를 못했기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.NATIVE_FLOAT
 
@@ -141,25 +138,20 @@ class _LOBDataType:
 # TODO: the names used across CHAR / VARCHAR / NCHAR / NVARCHAR
 # here are inconsistent and not very good
 class _TiberoChar(sqltypes.CHAR):
-    pass
-
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
-    # def get_dbapi_type(self, dbapi):
-    #     return dbapi.FIXED_CHAR
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_CHAR
 
 
 class _TiberoNChar(sqltypes.NCHAR):
-    pass
-
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
-    # def get_dbapi_type(self, dbapi):
-    #     return dbapi.FIXED_NCHAR
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_WCHAR
 
 
 class _TiberoUnicodeStringNCHAR(types.NVARCHAR2):
     pass
 
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
+    # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
+    # 사용해야 할지 자세히 조사를 못했기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.NCHAR
 
@@ -167,7 +159,8 @@ class _TiberoUnicodeStringNCHAR(types.NVARCHAR2):
 class _TiberoUnicodeStringCHAR(sqltypes.Unicode):
     pass
 
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
+    # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
+    # 사용해야 할지 자세히 조사를 못했기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.LONG_STRING
 
@@ -175,7 +168,8 @@ class _TiberoUnicodeStringCHAR(sqltypes.Unicode):
 class _TiberoUnicodeTextNCLOB(_LOBDataType, types.NCLOB):
     pass
 
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
+    # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
+    # 사용해야 할지 자세히 조사를 못했기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     # previously, this was dbapi.NCLOB.
     #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
@@ -184,36 +178,23 @@ class _TiberoUnicodeTextNCLOB(_LOBDataType, types.NCLOB):
 
 
 class _TiberoUnicodeTextCLOB(_LOBDataType, sqltypes.UnicodeText):
-    pass
-
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
-    # def get_dbapi_type(self, dbapi):
-    #     # previously, this was dbapi.CLOB.
-    #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
-    #     # when this datatype is used.
-    #     return dbapi.DB_TYPE_NVARCHAR
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_WLONGVARCHAR
 
 
 class _TiberoText(_LOBDataType, sqltypes.Text):
-    pass
-
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
-    # def get_dbapi_type(self, dbapi):
-    #     # previously, this was dbapi.CLOB.
-    #     # DB_TYPE_NVARCHAR will instead be passed to setinputsizes()
-    #     # when this datatype is used.
-    #     return dbapi.DB_TYPE_NVARCHAR
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_WLONGVARCHAR
 
 
 class _TiberoLong(_LOBDataType, types.LONG):
-    pass
-
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
-    # def get_dbapi_type(self, dbapi):
-    #     return dbapi.LONG_STRING
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_WLONGVARCHAR
 
 
 class _TiberoString(sqltypes.String):
+    # get_dbapi_type을 명시안한 이유는 pyodbc가 자동으로 varchar 또는 longvarchar를 선택하기
+    # 위함입니다.
     pass
 
 
@@ -229,21 +210,20 @@ class _TiberoEnum(sqltypes.Enum):
 
 
 class _TiberoBinary(_LOBDataType, sqltypes.LargeBinary):
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
-    # def get_dbapi_type(self, dbapi):
-    #     # previously, this was dbapi.BLOB.
-    #     # DB_TYPE_RAW will instead be passed to setinputsizes()
-    #     # when this datatype is used.
-    #     return dbapi.DB_TYPE_RAW
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_LONGVARBINARY
 
     def bind_processor(self, dialect):
+        # 위의 dbapi.SQL_BINARY 타입으로 인해 pyodbc 내부에서 binary로 변환해줍니다.
+        # 따라서 sqltypes.LargeBinary에 정의된 bind_processor()가 필요없습니다.
         return None
 
     def result_processor(self, dialect, coltype):
-        if not dialect.auto_convert_lobs:
-            return None
-        else:
-            return super().result_processor(dialect, coltype)
+        # pyodbc에서 이미 bytes로 전송해주기 때문에 별도의 processor가 필요없습니다.
+        # 따라서 sqltypes.LargeBinary에 이미 정의되어 있는 result_processor가
+        # 필요없습니다.
+        # https://github.com/mkleehammer/pyodbc/wiki/Data-Types
+        return None
 
 
 class _TiberoInterval(types.INTERVAL):
@@ -306,7 +286,8 @@ class _TiberoRaw(types.RAW):
 class _TiberoRowid(types.ROWID):
     pass
 
-    # 아래 코드를 주석처리한 이유는 완벽히 알기 못하기 때문입니다.
+    # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
+    # 사용해야 할지 자세히 조사를 못했기 때문입니다.
     # def get_dbapi_type(self, dbapi):
     #     return dbapi.ROWID
 

@@ -1870,10 +1870,23 @@ class TiberoDialect(default.DefaultDialect):
 
             if coltype == "NUMBER":
                 scale = maybe_int(row_dict["data_scale"])
-                if precision is None and scale == 0:
+
+                # oracle의 경우 Integer type으로 column을 정의하면 데이터베이스 내부적으로
+                # Number(NULL, 0)을 사용하게 됩니다. 하지만 티베로는 사용자가 Integer type을
+                # 명시한 것을 찾을 패턴이 없습니다. 그래서 precision가 38이고 scale이 0인 것을
+                # Integer로 사용하기로 결정했습니다. 티베로에서는 안타깝게도 Number(38, 0)과
+                # Number(38), Integer를 구분할만한 패턴이 없습니다.
+                if precision == 38 and scale == 0:
                     coltype = INTEGER()
                 else:
                     coltype = NUMBER(precision, scale)
+
+            # 아래 elif coltype == "FLOAT"는 true인 경우가 없습니다. 이유는
+            # 티베로에서 모든 FLOAT, DOUBLE PRECISION 모두 Number로 저장되며 단순히
+            # 데이터베이스만 보고 NUMBER인지, FLOAT인지, DOUBLE PRECISION인지 구분할 수
+            # 있는 방법이 없습니다. 따라서 안전하게 언급된 모든 타입의 range를 표현할 수 있는
+            # NUMBER 타입을 반환합니다. 그럼에도 아래 코드를 남긴 이유는 원래 oracle dialect
+            # 코드 수정이 있을 때 tibero에 적용하기 쉽게 하기 위해서입니다.
             elif coltype == "FLOAT":
                 # https://docs.oracle.com/cd/B14117_01/server.101/b10758/sqlqr06.htm
                 if precision == 126:

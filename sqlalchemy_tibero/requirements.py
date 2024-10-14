@@ -1413,9 +1413,22 @@ class DefaultRequirements(SuiteRequirements):
         i.e. a value such as 10.000 will come back in Decimal form with
         the .000 maintained."""
 
+        # oracledb, cx_Oracle은 실패가 곧 성공입니다. 하지만 tibero+pyodbc의 경우
+        # 성공해야 합니다.
         return fails_if(
             [
-                ("oracle", None, None, "driver doesn't do this automatically"),
+                (
+                    "oracle+oracledb",
+                    None,
+                    None,
+                    "driver doesn't do this automatically",
+                ),
+                (
+                    "oracle+cx_oracle",
+                    None,
+                    None,
+                    "driver doesn't do this automatically",
+                ),
             ]
         )
 

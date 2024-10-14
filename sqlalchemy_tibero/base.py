@@ -1038,7 +1038,9 @@ class TiberoDialect(default.DefaultDialect):
 
     @property
     def _supports_char_length(self):
-        return self.server_version_info >= (7,)
+        return not (
+            self.server_version_info and self.server_version_info < (7,)
+        )
 
     @property
     def _supports_update_returning_computed_cols(self):

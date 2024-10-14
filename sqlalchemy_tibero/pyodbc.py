@@ -315,8 +315,13 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     execution_ctx_cls = TiberoExecutionContext_pyodbc
     statement_compiler = TiberoCompiler_pyodbc
 
+    # Tibero pyodbc에서는 pyodbc execute()는 select, insert, update,
+    # delete문ㅇ에 대해 cursor.rowcount가 정상적으로 작동하는 것을 확인했습니다.
     supports_sane_rowcount = True
-    supports_sane_multi_rowcount = True
+    # Tibero pyodbc에서는 executemany()를 실행할 때 select, insert, update,
+    # delete문에 대해 cursor.rowcount가 정상적으로 작동하지 않는 것을 확인했습니다.
+    # 따라서 오라클과 다르게 아래 설정을 False로 수정했습니다.
+    supports_sane_multi_rowcount = False
 
     # OracleDialect_cx_oracle에서는 아래 4개의 항목 모두 True
     # TODO: insert_executemany_returning은

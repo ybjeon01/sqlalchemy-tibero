@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a14] - 2024-10-15
+
+### Added
+
+### Changed
+- pyodbc dialect에서 Float 타입을 _TiberoNumeric으로 맵핑, 81af50641f
+### Fixed
+- timestamp와 datetime 값을 못 가져오는 문제 해결, ef5b7957ca
+- 숫자를 왜곡된 decimal로 변환하는 문제 해결, f1b86f1234
+- insertmanyvalues가 잘 작동안하던 문제 해결, 7a2aa40b8c
+
 ## [2.0.0a13] - 2024-10-14
 
 ### Added

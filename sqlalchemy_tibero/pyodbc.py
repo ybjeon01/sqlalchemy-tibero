@@ -19,6 +19,7 @@ from sqlalchemy.engine.interfaces import IsolationLevel
 from sqlalchemy import exc
 from sqlalchemy.connectors.pyodbc import PyODBCConnector
 from sqlalchemy.sql import sqltypes
+from sqlalchemy.sql.compiler import InsertmanyvaluesSentinelOpts
 
 from . import types
 from .base import TiberoExecutionContext, TiberoDialect, TiberoCompiler
@@ -339,10 +340,12 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     # OracleDialect_cx_oracle에서는 아래 4개의 항목 모두 True
     # TODO: insert_executemany_returning은
     #       test/orm/test_composites.py::PointTest::test_bulk_insert
-    #       을 통해 작동한다는 것을 알았습니다. 하지만 나머지 3개는 아직 확인을 못했기
-    #       때문에 False로 두었습니다.
+    #       을 통해 작동한다는 것을 알았습니다. 그리고
+    #       insert_executemany_returning_sort_by_parameter_order은
+    #       ReturningTest::test_insert_w_floats을 통해 작동한다는 것을 알았습니다.
+    #       하지만 나머지 2개는 아직 확인을 못했기 때문에 False로 두었습니다.
     insert_executemany_returning = True
-    insert_executemany_returning_sort_by_parameter_order = False
+    insert_executemany_returning_sort_by_parameter_order = True
     update_executemany_returning = False
     delete_executemany_returning = False
 
@@ -403,9 +406,11 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     # 길지만 한번의 통신으로 모든 값들을 보낼 수 있습니다. execute_many에서는
     # "insert into table(a, b, c) values (?, ?, ?)"같이 짧은 query와
     # 여러 parameter를 사용해 한번의 통신을 한 것을 의미합니다.
-
     supports_multivalues_insert = True
     use_insertmanyvalues = True
+    insertmanyvalues_implicit_sentinel = (
+        InsertmanyvaluesSentinelOpts.ANY_AUTOINCREMENT
+    )
 
     #############################
     #### End Of  New Section ####

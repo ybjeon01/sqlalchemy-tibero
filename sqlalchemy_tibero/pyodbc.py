@@ -65,14 +65,13 @@ class _TiberoNumeric(sqltypes.Numeric):
 
     def result_processor(self, dialect, coltype):
         if self.asdecimal:
-            return processors.to_decimal_processor_factory(
-                decimal.Decimal,
-                (
-                    self.scale
-                    if self.scale is not None
-                    else self._default_decimal_return_scale
-                ),
-            )
+            if coltype is float:
+                return processors.to_decimal_processor_factory(
+                    decimal.Decimal, self._effective_decimal_return_scale
+                )
+            else:
+                # pyodbc에서 반환한 값의 타입이 decimal인 경우 데이터 변환없이 그대로 유저에게 전달
+                return None
         else:
             return processors.to_float
 

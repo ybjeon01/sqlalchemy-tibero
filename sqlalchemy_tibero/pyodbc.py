@@ -123,6 +123,7 @@ class _PYODBCTiberoDate(types._TiberoDate):
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_TYPE_DATE
 
+
 class _PYODBCTiberoDateTime(types.DATE):
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_TYPE_DATE
@@ -139,6 +140,7 @@ class _PYODBCTiberoTIMESTAMP(
             if value is not None:
                 return str(value)
             return value
+
         return process
 
     def get_dbapi_type(self, dbapi):
@@ -431,6 +433,8 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         os.environ.setdefault("TBCLI_WCHAR_TYPE", "UCS2")
         # Tibero takes client-side character set encoding from the environment.
         os.environ.setdefault("TB_NLS_LANG", "UTF8")
+
+        os.environ.setdefault("TBCLI_COMPAT_ALCHEMY", "YES")
 
         TiberoDialect.__init__(self, **kwargs)
         # arraysize는 원래 oracle driver의 cursor.var를 통해 구현되었으나

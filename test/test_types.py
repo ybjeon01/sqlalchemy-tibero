@@ -1247,7 +1247,7 @@ class EuroNumericTest(fixtures.TestBase):
     def _test_output_type_handler(self, stmt, expected, kw):
         pass
 
-    # class SetInputSizesTest(fixtures.TestBase):
+class SetInputSizesTest(fixtures.TestBase):
     __only_on__ = "oracle+pyodbc"
     __backend__ = True
 

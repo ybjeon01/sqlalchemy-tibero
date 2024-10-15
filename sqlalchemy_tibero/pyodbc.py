@@ -120,12 +120,26 @@ class _PYODBCTiberoDate(types._TiberoDate):
 
         return process
 
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_TYPE_DATE
+
+class _PYODBCTiberoDateTime(types.DATE):
+    def get_dbapi_type(self, dbapi):
+        return dbapi.SQL_TYPE_DATE
+
 
 class _PYODBCTiberoTIMESTAMP(
     types._TiberoDateLiteralRender, sqltypes.TIMESTAMP
 ):
     def literal_processor(self, dialect):
         return self._literal_processor_datetime(dialect)
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is not None:
+                return str(value)
+            return value
+        return process
 
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_TYPE_TIMESTAMP
@@ -354,6 +368,7 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             sqltypes.Integer: _TiberoInteger,
             types.NUMBER: _TiberoNUMBER,
             sqltypes.Date: _PYODBCTiberoDate,
+            sqltypes.DateTime: _PYODBCTiberoDateTime,
             sqltypes.LargeBinary: _TiberoBinary,
             sqltypes.Boolean: types._TiberoBoolean,
             sqltypes.Interval: _TiberoInterval,

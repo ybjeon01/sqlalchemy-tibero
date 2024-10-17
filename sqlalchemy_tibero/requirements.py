@@ -1218,7 +1218,10 @@ class DefaultRequirements(SuiteRequirements):
         literal string, e.g. via the TypeEngine.literal_processor() method.
         Added for Oracle and Postgresql as of now.
         """
-        return only_on(["oracle", "postgresql"])
+        # TODO: pyodbc 또는 tibero의 한계로 literal string을 지원할 수가 없습니다.
+        #       가능하다면 지원할 수 있는 방법을 찾아주세요.
+        #       fails_on을 썼지만 테스트가 스킵되버리는 문제가 있습니다. 원인을 찾아야 합니다.
+        return fails_on(["oracle+pyodbc"]) + only_on(["oracle", "postgresql"])
 
     @property
     def datetime_literals(self):

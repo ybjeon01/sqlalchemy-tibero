@@ -482,10 +482,27 @@ class TiberoCompiler(compiler.SQLCompiler):
 
         return "RETURNING " + ", ".join(columns) + " INTO " + ", ".join(binds)
 
+    # 티베로 7에서 FETCH FIRST PERCENT와 WITH TIES를 지원않는 것을 확인했습니다.
+    # 사용자가 지원안하는 문법을 사용한 경우 예외가 발생하도록 했습니다. 이 코드는 mssql
+    # dialect에서 참고했습니다. mssql dialect에 같은 이름의 메서드를 찾을 수 있지만
+    # 내용은 조금 다릅니다.
+    def _check_can_use_fetch_limit(self, select):
+        if select._fetch_clause_options is None:
+            return
+        if not any([select._fetch_clause_options["percent"],
+                   select._fetch_clause_options["with_ties"]]):
+            return
+
+        if not self.dialect._supports_percent_with_ties:
+            raise exc.CompileError(
+                "Tibero does not support PERCENT and WITH TIES."
+            )
+
     def _row_limit_clause(self, select, **kw):
         """Tibero7 supports OFFSET/FETCH operators
         Use it instead subquery with row_number
         """
+        self._check_can_use_fetch_limit(select)
 
         if (
             select._fetch_clause is not None
@@ -1027,6 +1044,11 @@ class TiberoDialect(default.DefaultDialect):
         self._supports_offset_fetch = (
             self.enable_offset_fetch and self.server_version_info >= (7,)
         )
+
+    @property
+    def _supports_percent_with_ties(self):
+        # 현재 모든 버전이 FETCH FIRST PERCENT와 WITH TIES를 지원하지 않습니다.
+        return False
 
     @property
     def _supports_table_compression(self):

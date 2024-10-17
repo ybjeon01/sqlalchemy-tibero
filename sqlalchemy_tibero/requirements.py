@@ -1978,7 +1978,8 @@ class DefaultRequirements(SuiteRequirements):
 
     @property
     def fetch_percent(self):
-        return only_on(["mssql >= 11", "oracle >= 4"])
+        return only_on(["mssql >= 11", "oracle >= 4"]) + fails_on(["oracle+pyodbc"])
+
 
     @property
     def fetch_ties(self):
@@ -1989,7 +1990,7 @@ class DefaultRequirements(SuiteRequirements):
                 "oracle >= 4",
                 "mariadb >= 10.6",
             ]
-        )
+        ) + fails_on(["oracle+pyodbc"])
 
     @property
     def fetch_no_order_by(self):

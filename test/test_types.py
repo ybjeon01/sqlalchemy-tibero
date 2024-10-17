@@ -1144,7 +1144,12 @@ class LOBFetchTest(fixtures.TablesTest):
         long_text.create(connection)
 
         if isinstance(datatype, UnicodeText):
-            word_seed = "ab🐍’«cdefg"
+            # 아래 뱀은 ucs2 범위가 아닌 utf-16으로 표현 가능합니다. 현재
+            # libtbodbc는 ucs2 범위만 지원합니다. 간혈적으로 운이 좋게 utf-16
+            # 문자가 성공적으로 DB 들어가나 정확히 언제 실패하는지를 모르겠습니다.
+            # 반면 '쑹'은 ucs2로 표현 가능합니다.
+            # word_seed = "ab🐍’«cdefg"
+            word_seed = "ab쑹’«cdefg"
         else:
             word_seed = "abcdef"
 
@@ -1254,7 +1259,9 @@ class SetInputSizesTest(fixtures.TestBase):
     # oracle driver는 do_set_input_sizes()를 재정의했습니다. 하지만
     # tibero는 SQLALchemy에서 제공해주는 PyODBCConnector()의
     # do_set_input_sizes()를 그대로 사용하기 때문에 테스트할 필요가 없습니다.
-    def test_setinputsizes(
+    # 테스트를 남긴 이유는 oracle dialect가 이러한 테스트를 가지고 있음을
+    # 보여주기 위함입니다.
+    def _test_setinputsizes(
         self, metadata, datatype, value, sis_value_text, set_nchar_flag
     ):
         pass
@@ -1262,5 +1269,7 @@ class SetInputSizesTest(fixtures.TestBase):
     # oracle driver는 do_set_input_sizes()를 재정의했습니다. 하지만
     # tibero는 SQLALchemy에서 제공해주는 PyODBCConnector()의
     # do_set_input_sizes()를 그대로 사용하기 때문에 테스트할 필요가 없습니다.
-    def test_event_no_native_float(self, metadata):
+    # 테스트를 남긴 이유는 oracle dialect가 이러한 테스트를 가지고 있음을
+    # 보여주기 위함입니다.
+    def _test_event_no_native_float(self, metadata):
         pass

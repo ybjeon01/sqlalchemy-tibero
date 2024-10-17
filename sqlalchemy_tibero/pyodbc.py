@@ -24,6 +24,14 @@ from sqlalchemy.sql.compiler import InsertmanyvaluesSentinelOpts
 from . import types
 from .base import TiberoExecutionContext, TiberoDialect, TiberoCompiler
 
+# 1. SQLAlchemy는 자체적인 풀링 메커니즘을 가지고 있기 때문에, PyODBC의 풀링 기능을 비활성화하는
+#    것이 더 나은 경우가 많습니다. 이 동작은 PyODBC 모듈 수준에서 전역적으로 비활성화할 수 있으며,
+#    첫 번째 연결이 만들어지기 전에만 비활성화할 수 있습니다. 이 내용은
+#    lib/sqlalchemy/dialects/mssql/pyodbc.py에서 발견했습니다.
+# 2. 풀링 기능을 비활성화해야 test/test_suite.py::WeCanSetDefaultSchemaWEventsTest
+#    테스트가 성공가능합니다.
+pyodbc.pooling = False
+
 
 class _TiberoInteger(sqltypes.Integer):
     def get_dbapi_type(self, dbapi):

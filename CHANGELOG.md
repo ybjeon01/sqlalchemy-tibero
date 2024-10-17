@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0a15] - 2024-10-17
+
+### Added
+
+### Changed
+- pyodbc pooling 기능 비활성화, 978519df7b
+- PERCENT, WITH TIES를 사용할시 예외 발생, ae64e17681
+- use_binds_for_limits 파라미터 제거, f72c3a2057
+- 지원되지 않는 datetime_interval 테스트 실패 처리, 99e3c75b0a
+- libtbodbc: UCS2 인코딩 문제로 인한 테스트 수정, c8ba73d314
+
+### Fixed
+
+
 ## [2.0.0a14] - 2024-10-15
 
 ### Added

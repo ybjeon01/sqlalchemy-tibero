@@ -1022,7 +1022,6 @@ class TiberoDialect(default.DefaultDialect):
         self,
         use_ansi=True,
         optimize_limits=False,
-        use_binds_for_limits=None,
         use_nchar_for_unicode=False,
         exclude_tablespaces=("SYSTEM", "SYSSUB"),
         enable_offset_fetch=True,

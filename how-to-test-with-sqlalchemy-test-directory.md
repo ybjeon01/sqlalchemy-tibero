@@ -108,7 +108,7 @@ git clone --depth 1 https://github.com/ybjeon01/sqlalchemy-tibero.git -b test-br
 4. `pytest`를 설치합니다.
 
     ```bash
-    pip install pytest
+    pip install pytest pytest-xdist
     ```
 
 ---
@@ -210,7 +210,7 @@ SQLAlchemy의 pytest 설정은 pyproject.toml 파일 내에서 관리됩니다. 
 
 ```toml
 [tool.pytest.ini_options]
-addopts = "--tb native -v -r sfxX --maxfail=250 -p warnings -p logging --strict-markers"
+addopts = "--tb native -v -r sfxX --maxfail=250 -p warnings -p logging --strict-markers --dropfirst --backend-only -n2"
 norecursedirs = "examples build doc lib"
 python_files = "test_*.py"
 minversion = "6.2"

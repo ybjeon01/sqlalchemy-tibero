@@ -17,6 +17,12 @@ the code available on PyPI.
 
 ---
 
+## SQLAlchemy Tibero Dialect Document
+
+You can view the korean version here: [sqlalchemy-tibero-doc.md](./sqlalchemy-tibero-doc.md)
+
+---
+
 ## How to test with sqlalchemy test directory
 
 Following document describes the procedure for executing the tests located

@@ -1,9 +1,10 @@
-# tibero/base.py
-
-"""
-Support for the TmaxData Tibero database.
-"""
-
+# sqlalchemy_tibero/base.py
+# Copyright (C) 2024-2024 the Tibero authors and contributors
+# <see AUTHORS file>
+#
+# This module is part of SQLAlchemy Tibero Dialect and is released under
+# the MIT License: https://www.opensource.org/licenses/mit-license.php
+# mypy: ignore-errors
 from collections import defaultdict
 from functools import lru_cache
 from functools import wraps

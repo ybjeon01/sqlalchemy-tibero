@@ -1,8 +1,8 @@
-# dialects/tibero/dictionary.py
-# Copyright (C) 2005-2024 the Tibero authors and contributors
+# sqlalchemy_tibero/dictionary.py
+# Copyright (C) 2024-2024 the Tibero authors and contributors
 # <see AUTHORS file>
 #
-# This module is part of SQLAlchemy and is released under
+# This module is part of SQLAlchemy Tibero Dialect and is released under
 # the MIT License: https://www.opensource.org/licenses/mit-license.php
 # mypy: ignore-errors
 from sqlalchemy import Table, MetaData, table, Column, CHAR, VARCHAR

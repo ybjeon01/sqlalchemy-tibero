@@ -1,3 +1,10 @@
+# sqlalchemy_tibero/__init__.py
+# Copyright (C) 2024-2024 the Tibero authors and contributors
+# <see AUTHORS file>
+#
+# This module is part of SQLAlchemy Tibero Dialect and is released under
+# the MIT License: https://www.opensource.org/licenses/mit-license.php
+# mypy: ignore-errors
 from .base import DOUBLE_PRECISION
 from .base import REAL
 from sqlalchemy.sql.sqltypes import BLOB

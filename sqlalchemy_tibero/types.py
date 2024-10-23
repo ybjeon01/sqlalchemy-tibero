@@ -1,3 +1,9 @@
+# dialects/oracle/types.py
+# Copyright (C) 2024-2024 the Tibero authors and contributors
+# <see AUTHORS file>
+#
+# This module is part of SQLAlchemy Tibero Dialect and is released under
+# the MIT License: https://www.opensource.org/licenses/mit-license.php
 import datetime as dt
 from typing import Optional
 from typing import Type

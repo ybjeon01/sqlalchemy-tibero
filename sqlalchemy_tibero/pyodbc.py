@@ -1,9 +1,9 @@
-# tibero/pyodbc.py
-# Copyright (C) 2024-2024 the SQLAlchemy authors and contributors <see AUTHORS file>
+# sqlalchemy_tibero/pyodbc.py
+# Copyright (C) 2024-2024 the Tibero authors and contributors
+# <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
-
 import datetime
 import os
 import decimal
@@ -355,7 +355,7 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     #       ReturningTest::test_insert_w_floats을 통해 작동한다는 것을 알았습니다.
     #       하지만 나머지 2개는 아직 확인을 못했기 때문에 False로 두었습니다.
     insert_executemany_returning = True
-    insert_executemany_returning_sort_by_parameter_order = True
+    insert_executemany_returning_sort_by_parameter_order = False
     update_executemany_returning = False
     delete_executemany_returning = False
 
@@ -419,7 +419,7 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     supports_multivalues_insert = True
     use_insertmanyvalues = True
     insertmanyvalues_implicit_sentinel = (
-        InsertmanyvaluesSentinelOpts.ANY_AUTOINCREMENT
+        InsertmanyvaluesSentinelOpts.AUTOINCREMENT
     )
 
     #############################
@@ -442,6 +442,7 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
         # Tibero takes client-side character set encoding from the environment.
         os.environ.setdefault("TB_NLS_LANG", "UTF8")
 
+        # tbodbc에 returning into를 가능하게 하는 환경 변수
         os.environ.setdefault("TBCLI_COMPAT_ALCHEMY", "YES")
 
         TiberoDialect.__init__(self, **kwargs)

@@ -1,4 +1,4 @@
-"""Requirements specific to SQLAlchemy's own unit tests."""
+"""Requirements specific to Tibero Dialect's own unit tests."""
 
 from sqlalchemy import exc
 from sqlalchemy.sql import sqltypes

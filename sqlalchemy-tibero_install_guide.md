@@ -21,7 +21,7 @@ Tibero Dialect 는 ODBC 를 사용하는 pyodbc 드라이버를 통해 구현이
 
 Tibero Dialect 를 사용하기 위해서 아래와 같은 요구 사항을 충족해야 합니다.
 
-- python 3.8 이상
+- python 3.9 이상
 - pyodbc 5.x 이상
 - sqlalchemy 2.0 이상
 - Tibero 및 Tibero ODBC Driver 7.x 이상

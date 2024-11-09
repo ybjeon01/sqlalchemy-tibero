@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.1] - 2024-11-10
+
+### Added
+
+### Changed
+- python 3.8의 지원이 끝남에 따라 지원되는 파이썬 버전을 3.9으로 바꿈, b8446aa679
+
+### Fixed
+
 ## [2.0.0] - 2024-10-23
 
 ### Added
@@ -26,7 +35,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - libtbodbc: UCS2 인코딩 문제로 인한 테스트 수정, c8ba73d314
 
 ### Fixed
-
 
 ## [2.0.0a14] - 2024-10-15
 

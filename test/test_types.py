@@ -9,8 +9,6 @@ from sqlalchemy import CHAR
 from sqlalchemy import DATE
 from sqlalchemy import Date
 from sqlalchemy import DateTime
-from sqlalchemy import Double
-from sqlalchemy import DOUBLE_PRECISION
 from sqlalchemy import event
 from sqlalchemy import exc
 from sqlalchemy import FLOAT
@@ -43,7 +41,6 @@ from sqlalchemy.testing import eq_
 from sqlalchemy.testing import expect_raises_message
 from sqlalchemy.testing import fixtures
 from sqlalchemy.testing import is_
-from sqlalchemy.testing import mock
 from sqlalchemy.testing.engines import testing_engine
 from sqlalchemy.testing.schema import Column
 from sqlalchemy.testing.schema import Table
@@ -203,14 +200,10 @@ class DialectTypesTest(fixtures.TestBase, AssertsCompiledSQL):
 
     @testing.combinations(
         ("sa", sqltypes.Float(), "FLOAT"),
-        ("sa", sqltypes.Double(), "DOUBLE PRECISION"),
         ("sa", sqltypes.FLOAT(), "FLOAT"),
         ("sa", sqltypes.REAL(), "REAL"),
-        ("sa", sqltypes.DOUBLE(), "DOUBLE"),
-        ("sa", sqltypes.DOUBLE_PRECISION(), "DOUBLE PRECISION"),
         ("tibero", tibero.FLOAT(), "FLOAT"),
         ("tibero", tibero.DOUBLE_PRECISION(), "DOUBLE PRECISION"),
-        ("tibero", tibero.REAL(), "REAL"),
         ("tibero", tibero.BINARY_DOUBLE(), "BINARY_DOUBLE"),
         ("tibero", tibero.BINARY_FLOAT(), "BINARY_FLOAT"),
         id_="ira",
@@ -286,7 +279,7 @@ class TypesTest(fixtures.TestBase):
             [(2, "value 2                       ")],
         )
 
-    @testing.requires.insert_returning
+    @testing.requires.returning
     def test_int_not_float(self, metadata, connection):
         m = metadata
         t1 = Table("t1", m, Column("foo", Integer))
@@ -304,7 +297,7 @@ class TypesTest(fixtures.TestBase):
     # api가 pyodbc에서 제공되어야 지원가능합니다. 따라서 tibero_pyodbc에서는
     # coerce_to_decimal parameter를 제거했고 아래의 테스트는 실행될 수 없습니다.
     # 함수 이름을 남긴 이유는 oracle dialect에 이러한 테스트가 있는 걸 알려주기 위함입니다.
-    @testing.requires.insert_returning
+    @testing.requires.returning
     def _test_int_not_float_no_coerce_decimal(self, metadata):
         pass
 

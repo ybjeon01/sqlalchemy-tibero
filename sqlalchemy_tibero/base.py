@@ -1,67 +1,30 @@
-# sqlalchemy_tibero/base.py
-# Copyright (C) 2024-2024 the Tibero authors and contributors
-# <see AUTHORS file>
-#
-# This module is part of SQLAlchemy Tibero Dialect and is released under
-# the MIT License: https://www.opensource.org/licenses/mit-license.php
-# mypy: ignore-errors
-from collections import defaultdict
-from functools import lru_cache
-from functools import wraps
+import pdb
+from itertools import groupby
 import re
 
-from sqlalchemy import util
-from sqlalchemy import exc
-from sqlalchemy import sql
-from sqlalchemy import schema as sa_schema
-
 from sqlalchemy import Computed
-
+from sqlalchemy import exc
+from sqlalchemy import schema as sa_schema
+from sqlalchemy import sql
+from sqlalchemy import util
 from sqlalchemy.engine import default
 from sqlalchemy.engine import reflection
-from sqlalchemy.engine import ObjectKind
-from sqlalchemy.engine import ObjectScope
-from sqlalchemy.engine.reflection import ReflectionDefaults
-
-from sqlalchemy.sql import sqltypes
 from sqlalchemy.sql import compiler
 from sqlalchemy.sql import expression
-from sqlalchemy.sql import visitors
+from sqlalchemy.sql import sqltypes
 from sqlalchemy.sql import util as sql_util
-from sqlalchemy.sql import select
-from sqlalchemy.sql import bindparam
-from sqlalchemy.sql import and_
-from sqlalchemy.sql import or_
-from sqlalchemy.sql import func
-from sqlalchemy.sql import null
-from sqlalchemy.sql.visitors import InternalTraversal
-
+from sqlalchemy.sql import visitors
+from sqlalchemy.types import BLOB
+from sqlalchemy.types import CHAR
+from sqlalchemy.types import CLOB
+from sqlalchemy.types import FLOAT
 from sqlalchemy.types import INTEGER
-from sqlalchemy.types import DOUBLE_PRECISION
-from sqlalchemy.types import REAL
+from sqlalchemy.types import NCHAR
+from sqlalchemy.types import NVARCHAR
+from sqlalchemy.types import TIMESTAMP
+from sqlalchemy.types import VARCHAR
+from sqlalchemy.util import compat
 
-from . import dictionary
-from .types import _TiberoBoolean
-from .types import _TiberoDate
-from .types import BFILE
-from .types import BINARY_DOUBLE
-from .types import BINARY_FLOAT
-from .types import DATE
-from .types import FLOAT
-from .types import INTERVAL
-from .types import LONG
-from .types import NCLOB
-from .types import NUMBER
-from .types import NVARCHAR2  # noqa
-from .types import TiberoRaw  # noqa
-from .types import RAW
-from .types import ROWID  # noqa
-from .types import TIMESTAMP
-from .types import VARCHAR2  # noqa
-
-
-# TODO: 여기 있는 모든 키워드가 티베로에서 지원되는지 확인하기
-#       지원안되는 게 몇 개 있더라도 뺴면 안됩니다. 나중에 지원될 수 있기 때문입니다.
 RESERVED_WORDS = set(
     "SHARE RAW DROP BETWEEN FROM DESC OPTION PRIOR LONG THEN "
     "DEFAULT ALTER IS INTO MINUS INTEGER NUMBER GRANT IDENTIFIED "
@@ -75,41 +38,184 @@ RESERVED_WORDS = set(
 )
 
 NO_ARG_FNS = set(
-    "UID CURRENT_DATE SYSDATE USER CURRENT_TIME CURRENT_TIMESTAMP".split()
+    "UID CURRENT_DATE SYSDATE USER " "CURRENT_TIME CURRENT_TIMESTAMP".split()
 )
+
+
+class RAW(sqltypes._Binary):
+    __visit_name__ = "RAW"
+
+
+TiberoRaw = RAW
+
+
+class NCLOB(sqltypes.Text):
+    __visit_name__ = "NCLOB"
+
+
+class VARCHAR2(VARCHAR):
+    __visit_name__ = "VARCHAR2"
+
+
+NVARCHAR2 = NVARCHAR
+
+
+class NUMBER(sqltypes.Numeric, sqltypes.Integer):
+    __visit_name__ = "NUMBER"
+
+    def __init__(self, precision=None, scale=None, asdecimal=None):
+        if asdecimal is None:
+            asdecimal = bool(scale and scale > 0)
+
+        super(NUMBER, self).__init__(
+            precision=precision, scale=scale, asdecimal=asdecimal
+        )
+
+    def adapt(self, impltype):
+        ret = super(NUMBER, self).adapt(impltype)
+        # leave a hint for the DBAPI handler
+        ret._is_tibero_number = True
+        return ret
+
+    @property
+    def _type_affinity(self):
+        if bool(self.scale and self.scale > 0):
+            return sqltypes.Numeric
+        else:
+            return sqltypes.Integer
+
+
+class DOUBLE_PRECISION(sqltypes.Float):
+    __visit_name__ = "DOUBLE_PRECISION"
+
+
+class BINARY_DOUBLE(sqltypes.Float):
+    __visit_name__ = "BINARY_DOUBLE"
+
+
+class BINARY_FLOAT(sqltypes.Float):
+    __visit_name__ = "BINARY_FLOAT"
+
+
+class BFILE(sqltypes.LargeBinary):
+    __visit_name__ = "BFILE"
+
+
+class LONG(sqltypes.Text):
+    __visit_name__ = "LONG"
+
+# TAG: 1.4 2.0 차이
+class DATE(sqltypes.DateTime):
+    """Provide the tibero DATE type.
+
+    This type has no special Python behavior, except that it subclasses
+    :class:`_types.DateTime`; this is to suit the fact that the Tibero
+    ``DATE`` type supports a time value.
+
+    .. versionadded:: 0.9.4
+
+    """
+
+    __visit_name__ = "DATE"
+
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # literal_processor()
+
+    def _compare_type_affinity(self, other):
+        return other._type_affinity in (sqltypes.DateTime, sqltypes.Date)
+
+
+class INTERVAL(sqltypes.NativeForEmulated, sqltypes._AbstractInterval):
+    __visit_name__ = "INTERVAL"
+
+    def __init__(self, day_precision=None, second_precision=None):
+        """Construct an INTERVAL.
+
+        Note that only DAY TO SECOND intervals are currently supported.
+        This is due to a lack of support for YEAR TO MONTH intervals
+        within available DBAPIs.
+
+        :param day_precision: the day precision value.  this is the number of
+          digits to store for the day field.  Defaults to "2"
+        :param second_precision: the second precision value.  this is the
+          number of digits to store for the fractional seconds field.
+          Defaults to "6".
+
+        """
+        self.day_precision = day_precision
+        self.second_precision = second_precision
+
+    @classmethod
+    def _adapt_from_generic_interval(cls, interval):
+        return INTERVAL(
+            day_precision=interval.day_precision,
+            second_precision=interval.second_precision,
+        )
+
+    @property
+    def _type_affinity(self):
+        return sqltypes.Interval
+
+    def as_generic(self, allow_nulltype=False):
+        return sqltypes.Interval(
+            native=True,
+            second_precision=self.second_precision,
+            day_precision=self.day_precision,
+        )
+
+    def coerce_compared_value(self, op, value):
+        return self
+
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # python_type(), literal_processor()
+
+
+# TAG: 1.4 2.0 차이
+# 1.4에는 다음 클래스 미존재
+# TIMESTAMP
+# 타입 추가와 oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+
+
+class ROWID(sqltypes.TypeEngine):
+    """Tibero ROWID type.
+
+    When used in a cast() or similar, generates ROWID.
+
+    """
+
+    __visit_name__ = "ROWID"
+
+
+class _TiberoBoolean(sqltypes.Boolean):
+    def get_dbapi_type(self, dbapi):
+        return dbapi.NUMBER
+
 
 colspecs = {
     sqltypes.Boolean: _TiberoBoolean,
     sqltypes.Interval: INTERVAL,
     sqltypes.DateTime: DATE,
-    sqltypes.Date: _TiberoDate,
 }
 
-# TODO: 여기 있는 모든 타입들이 티베로에서 지원되는지 확인하기
-# Oracle에서 VARCHAR 는 자동으로 VARCHAR2로 변환이 되는데
-# Tibero에서는 VARCHAR2가 자동으로 VARCHAR로 변환이 됩니다.
-# Oracle에서 NVARCHAR 라는 타입은 없으나 NVARCHAR2 라는
-# 타입을 가지고 있습니다. Tibero에서는 VARCHAR2가 자동으로
-# VARCHAR로 변환이 됩니다.
 ischema_names = {
     "VARCHAR": sqltypes.VARCHAR,
-    "NVARCHAR": sqltypes.NVARCHAR,
-    "CHAR": sqltypes.CHAR,
-    "NCHAR": sqltypes.NCHAR,
+    "NVARCHAR": NVARCHAR,
+    "CHAR": CHAR,
+    "NCHAR": NCHAR,
     "DATE": DATE,
     "NUMBER": NUMBER,
-    "BLOB": sqltypes.BLOB,
+    "BLOB": BLOB,
     "BFILE": BFILE,
-    "CLOB": sqltypes.CLOB,
+    "CLOB": CLOB,
     "NCLOB": NCLOB,
     "TIMESTAMP": TIMESTAMP,
     "TIMESTAMP WITH TIME ZONE": TIMESTAMP,
-    "TIMESTAMP WITH LOCAL TIME ZONE": TIMESTAMP,
     "INTERVAL DAY TO SECOND": INTERVAL,
     "RAW": RAW,
     "FLOAT": FLOAT,
-    "DOUBLE PRECISION": sqltypes.DOUBLE_PRECISION,
-    "REAL": sqltypes.REAL,
+    "DOUBLE PRECISION": DOUBLE_PRECISION,
     "LONG": LONG,
     "BINARY_DOUBLE": BINARY_DOUBLE,
     "BINARY_FLOAT": BINARY_FLOAT,
@@ -129,8 +235,9 @@ class TiberoTypeCompiler(compiler.GenericTypeCompiler):
     def visit_float(self, type_, **kw):
         return self.visit_FLOAT(type_, **kw)
 
-    def visit_double(self, type_, **kw):
-        return self.visit_DOUBLE_PRECISION(type_, **kw)
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # visit_double()
 
     def visit_unicode(self, type_, **kw):
         if self.dialect._use_nchar_for_unicode:
@@ -152,9 +259,11 @@ class TiberoTypeCompiler(compiler.GenericTypeCompiler):
         return "LONG"
 
     def visit_TIMESTAMP(self, type_, **kw):
-        if getattr(type_, "local_timezone", False):
-            return "TIMESTAMP WITH LOCAL TIME ZONE"
-        elif type_.timezone:
+        # TAG: 1.4 2.0 차이
+        # 1.4 구현 부족
+        # 타입 추가와 oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+
+        if type_.timezone:
             return "TIMESTAMP WITH TIME ZONE"
         else:
             return "TIMESTAMP"
@@ -169,49 +278,31 @@ class TiberoTypeCompiler(compiler.GenericTypeCompiler):
         return self._generate_numeric(type_, "BINARY_FLOAT", **kw)
 
     def visit_FLOAT(self, type_, **kw):
-        kw["_requires_binary_precision"] = True
+        # don't support conversion between decimal/binary
+        # precision yet
+
+        # TAG: 1.4 2.0 차이
+        # 1.4 구현 부족
+        # 타입 추가와 oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+        kw["no_precision"] = True
         return self._generate_numeric(type_, "FLOAT", **kw)
 
     def visit_NUMBER(self, type_, **kw):
         return self._generate_numeric(type_, "NUMBER", **kw)
 
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # 타입 추가와 oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
     def _generate_numeric(
-        self,
-        type_,
-        name,
-        precision=None,
-        scale=None,
-        _requires_binary_precision=False,
-        **kw,
+        self, type_, name, precision=None, scale=None, no_precision=False, **kw
     ):
         if precision is None:
-            precision = getattr(type_, "precision", None)
-
-        if _requires_binary_precision:
-            binary_precision = getattr(type_, "binary_precision", None)
-
-            if precision and binary_precision is None:
-                # https://www.oracletutorial.com/oracle-basics/oracle-float/
-                estimated_binary_precision = int(precision / 0.30103)
-                raise exc.ArgumentError(
-                    "Tibero FLOAT types use 'binary precision', which does "
-                    "not convert cleanly from decimal 'precision'.  Please "
-                    "specify "
-                    f"this type with a separate Tibero variant, such as "
-                    f"{type_.__class__.__name__}(precision={precision})."
-                    f"with_variant(tibero.FLOAT"
-                    f"(binary_precision="
-                    f"{estimated_binary_precision}), 'tibero'), so that the "
-                    "Tibero specific 'binary_precision' may be specified "
-                    "accurately."
-                )
-            else:
-                precision = binary_precision
+            precision = type_.precision
 
         if scale is None:
             scale = getattr(type_, "scale", None)
 
-        if precision is None:
+        if no_precision or precision is None:
             return name
         elif scale is None:
             n = "%(name)s(%(precision)s)"
@@ -285,7 +376,7 @@ class TiberoCompiler(compiler.SQLCompiler):
 
     def __init__(self, *args, **kwargs):
         self.__wheres = {}
-        super().__init__(*args, **kwargs)
+        super(TiberoCompiler, self).__init__(*args, **kwargs)
 
     def visit_mod_binary(self, binary, operator, **kw):
         return "mod(%s, %s)" % (
@@ -324,13 +415,15 @@ class TiberoCompiler(compiler.SQLCompiler):
             return ""
 
     def visit_function(self, func, **kw):
-        text = super().visit_function(func, **kw)
+        text = super(TiberoCompiler, self).visit_function(func, **kw)
         if kw.get("asfrom", False):
             text = "TABLE (%s)" % text
         return text
 
     def visit_table_valued_column(self, element, **kw):
-        text = super().visit_table_valued_column(element, **kw)
+        text = super(TiberoCompiler, self).visit_table_valued_column(
+            element, **kw
+        )
         text = text + ".COLUMN_VALUE"
         return text
 
@@ -348,6 +441,7 @@ class TiberoCompiler(compiler.SQLCompiler):
             return compiler.SQLCompiler.visit_join(
                 self, join, from_linter=from_linter, **kwargs
             )
+        # Note: Tibero 6이상에서는 ansi 버전을 지원하기 때문에 사실상 use_ansi는 없어도 되는 옵션
         else:
             if from_linter:
                 from_linter.edges.add((join.left, join.right))
@@ -416,9 +510,7 @@ class TiberoCompiler(compiler.SQLCompiler):
 
         return " " + alias_name_text
 
-    def returning_clause(
-        self, stmt, returning_cols, *, populate_result_map, **kw
-    ):
+    def returning_clause(self, stmt, returning_cols):
         columns = []
         binds = []
 
@@ -431,12 +523,13 @@ class TiberoCompiler(compiler.SQLCompiler):
                 and isinstance(column.server_default, Computed)
                 and not self.dialect._supports_update_returning_computed_cols
             ):
-                #  TODO: Tibero도 지원안되는지 확인해보기
+                # Note: Tibero 6이상에서는 _supports_update_returning_computed_cols = True 이기 때문에
+                #       없어도 되는 메서드입니다.
                 util.warn(
-                    "Computed columns don't work with Tibero UPDATE "
+                    f"Computed columns don't work with {self.dialect.name.capitalize()} UPDATE "
                     "statements that use RETURNING; the value of the column "
                     "*before* the UPDATE takes place is returned.   It is "
-                    "advised to not use RETURNING with an Tibero computed "
+                    f"advised to not use RETURNING with an {self.dialect.name.capitalize()} computed "
                     "column.  Consider setting implicit_returning to False on "
                     "the Table object in order to avoid implicit RETURNING "
                     "clauses from being generated for this Table."
@@ -452,80 +545,36 @@ class TiberoCompiler(compiler.SQLCompiler):
                 self.bindparam_string(self._truncate_bindparam(outparam))
             )
 
-            # has_out_parameters would in a normal case be set to True
-            # as a result of the compiler visiting an outparam() object.
-            # in this case, the above outparam() objects are not being
-            # visited.   Ensure the statement itself didn't have other
-            # outparam() objects independently.
-            # technically, this could be supported, but as it would be
-            # a very strange use case without a clear rationale, disallow it
-            if self.has_out_parameters:
-                raise exc.InvalidRequestError(
-                    "Using explicit outparam() objects with "
-                    "UpdateBase.returning() in the same Core DML statement "
-                    "is not supported in the Tibero dialect."
-                )
+            # TAG: 1.4 2.0 차이
+            # 1.4 구현 부족
+            # oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
 
-            self._tibero_returning = True
+            # ensure the ExecutionContext.get_out_parameters() method is
+            # *not* called; the cx_Oracle dialect wants to handle these
+            # parameters separately
+            self.has_out_parameters = False
 
             columns.append(self.process(col_expr, within_columns_clause=False))
-            if populate_result_map:
-                self._add_to_result_map(
-                    getattr(col_expr, "name", col_expr._anon_name_label),
-                    getattr(col_expr, "name", col_expr._anon_name_label),
-                    (
-                        column,
-                        getattr(column, "name", None),
-                        getattr(column, "key", None),
-                    ),
-                    column.type,
-                )
+
+            self._add_to_result_map(
+                getattr(col_expr, "name", col_expr._anon_name_label),
+                getattr(col_expr, "name", col_expr._anon_name_label),
+                (
+                    column,
+                    getattr(column, "name", None),
+                    getattr(column, "key", None),
+                ),
+                column.type,
+            )
 
         return "RETURNING " + ", ".join(columns) + " INTO " + ", ".join(binds)
 
-    # 티베로 7에서 FETCH FIRST PERCENT와 WITH TIES를 지원않는 것을 확인했습니다.
-    # 사용자가 지원안하는 문법을 사용한 경우 예외가 발생하도록 했습니다. 이 코드는 mssql
-    # dialect에서 참고했습니다. mssql dialect에 같은 이름의 메서드를 찾을 수 있지만
-    # 내용은 조금 다릅니다.
-    def _check_can_use_fetch_limit(self, select):
-        if select._fetch_clause_options is None:
-            return
-        if not any([select._fetch_clause_options["percent"],
-                   select._fetch_clause_options["with_ties"]]):
-            return
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # oracle dialect 내부 구조 메서드 추가만으로 2.0처럼 구현 가능
+    # _check_can_use_fetch_limit(), _row_limit_clause()
 
-        if not self.dialect._supports_percent_with_ties:
-            raise exc.CompileError(
-                "Tibero does not support PERCENT and WITH TIES."
-            )
-
-    def _row_limit_clause(self, select, **kw):
-        """Tibero7 supports OFFSET/FETCH operators
-        Use it instead subquery with row_number
-        """
-        self._check_can_use_fetch_limit(select)
-
-        if (
-            select._fetch_clause is not None
-            or not self.dialect._supports_offset_fetch
-        ):
-            return super()._row_limit_clause(
-                select, use_literal_execute_for_simple_int=True, **kw
-            )
-        else:
-            return self.fetch_clause(
-                select,
-                fetch_clause=self._get_limit_or_fetch(select),
-                use_literal_execute_for_simple_int=True,
-                **kw,
-            )
-
-    def _get_limit_or_fetch(self, select):
-        if select._fetch_clause is None:
-            return select._limit_clause
-        else:
-            return select._fetch_clause
-
+    # Note: Tibero 6이상에서는 ansi 버전을 지원하기 때문에 사실상 없어도 되는 메서드입니다.
     def translate_select_structure(self, select_stmt, **kwargs):
         select = select_stmt
 
@@ -542,7 +591,6 @@ class TiberoCompiler(compiler.SQLCompiler):
             # if fetch is used this is not needed
             if (
                 select._has_row_limiting_clause
-                and not self.dialect._supports_offset_fetch
                 and select._fetch_clause is None
             ):
                 limit_clause = select._limit_clause
@@ -600,6 +648,7 @@ class TiberoCompiler(compiler.SQLCompiler):
 
                 # add expressions to accommodate FOR UPDATE OF
                 if for_update is not None and for_update.of:
+
                     adapter = sql_util.ClauseAdapter(inner_subquery)
                     for_update.of = [
                         adapter.traverse(elem) for elem in for_update.of
@@ -677,7 +726,7 @@ class TiberoCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):
         return ""
 
-    def visit_empty_set_expr(self, type_, **kw):
+    def visit_empty_set_expr(self, type_):
         return "SELECT 1 FROM DUAL WHERE 1!=1"
 
     def for_update_clause(self, select, **kw):
@@ -744,42 +793,9 @@ class TiberoCompiler(compiler.SQLCompiler):
                 self.render_literal_value(flags, sqltypes.STRINGTYPE),
             )
 
-    def visit_aggregate_strings_func(self, fn, **kw):
-        return "LISTAGG%s" % self.function_argspec(fn, **kw)
-
-    def _visit_bitwise(self, binary, fn_name, custom_right=None, **kw):
-        left = self.process(binary.left, **kw)
-        right = self.process(
-            custom_right if custom_right is not None else binary.right, **kw
-        )
-        return f"{fn_name}({left}, {right})"
-
-    # TODO: oracle 21부터 bitxor과 bitor이 지원되지만 아직 tibero 7
-    #       에서는 지원하지 않습니다. Tibero 7에서 지원되기 시작한다면
-    #       requirements.py의 supports_bitwise_xor() 메서드를 수정해
-    #       주세요.
-    def visit_bitwise_xor_op_binary(self, binary, operator, **kw):
-        return self._visit_bitwise(binary, "BITXOR", **kw)
-
-    # TODO: oracle 21부터 bitxor과 bitor이 지원되지만 아직 tibero 7
-    #       에서는 지원하지 않습니다. Tibero 7에서 지원되기 시작한다면
-    #       requirements.py의 supports_bitwise_or() 메서드를 수정해
-    #       주세요.
-    def visit_bitwise_or_op_binary(self, binary, operator, **kw):
-        return self._visit_bitwise(binary, "BITOR", **kw)
-
-    def visit_bitwise_and_op_binary(self, binary, operator, **kw):
-        return self._visit_bitwise(binary, "BITAND", **kw)
-
-    def visit_bitwise_rshift_op_binary(self, binary, operator, **kw):
-        raise exc.CompileError("Cannot compile bitwise_rshift in tibero")
-
-    def visit_bitwise_lshift_op_binary(self, binary, operator, **kw):
-        raise exc.CompileError("Cannot compile bitwise_lshift in tibero")
-
-    def visit_bitwise_not_op_unary_operator(self, element, operator, **kw):
-        raise exc.CompileError("Cannot compile bitwise_not in tibero")
-
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # visit_aggregate_strings_func()
 
 class TiberoDDLCompiler(compiler.DDLCompiler):
     def define_constraint_cascades(self, constraint):
@@ -787,12 +803,12 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         if constraint.ondelete is not None:
             text += " ON DELETE %s" % constraint.ondelete
 
-        # oracle and tibero have no ON UPDATE CASCADE -
+        # oracle has no ON UPDATE CASCADE -
         # its only available via triggers
-        # https://web.archive.org/web/20090317041251/https://asktom.oracle.com/tkyte/update_cascade/index.html
+        # https://asktom.oracle.com/tkyte/update_cascade/index.html
         if constraint.onupdate is not None:
             util.warn(
-                "Tibero does not contain native UPDATE CASCADE "
+                f"{self.dialect.name.capitalize()} does not contain native UPDATE CASCADE "
                 "functionality - onupdates will not be rendered for foreign "
                 "keys.  Consider using deferrable=True, initially='deferred' "
                 "or triggers."
@@ -800,25 +816,20 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
 
         return text
 
-    def visit_drop_table_comment(self, drop, **kw):
+    def visit_drop_table_comment(self, drop):
         return "COMMENT ON TABLE %s IS ''" % self.preparer.format_table(
             drop.element
         )
 
-    def visit_create_index(self, create, **kw):
+    def visit_create_index(self, create):
         index = create.element
         self._verify_index_table(index)
         preparer = self.preparer
         text = "CREATE "
         if index.unique:
             text += "UNIQUE "
-        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
-        # if index.dialect_options["tibero"]["bitmap"]:
-        #     text += "BITMAP "
-
-        if index.dialect_options["oracle"]["bitmap"]:
+        if index.dialect_options[self.dialect.name]["bitmap"]:
             text += "BITMAP "
-
         text += "INDEX %s ON %s (%s)" % (
             self._prepared_index_name(index, include_schema=True),
             preparer.format_table(index.table, use_schema=True),
@@ -829,33 +840,18 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
                 for expr in index.expressions
             ),
         )
-
-        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
-        # if index.dialect_options["tibero"]["compress"] is not False:
-        #     if index.dialect_options["tibero"]["compress"] is True:
-        #         text += " COMPRESS"
-        #     else:
-        #         text += (
-        #             " COMPRESS %d"
-        #             % (index.dialect_options["tibero"]["compress"])
-        #         )
-        if index.dialect_options["oracle"]["compress"] is not False:
-            if index.dialect_options["oracle"]["compress"] is True:
+        if index.dialect_options[self.dialect.name]["compress"] is not False:
+            if index.dialect_options[self.dialect.name]["compress"] is True:
                 text += " COMPRESS"
             else:
-                text += (
-                    " COMPRESS %d"
-                    % (index.dialect_options["oracle"]["compress"])
+                text += " COMPRESS %d" % (
+                    index.dialect_options[self.dialect.name]["compress"]
                 )
-
         return text
 
     def post_create_table(self, table):
         table_opts = []
-
-        # TODO: 테스트를 위해 tibero에서 잠시 oracle로 바꿨습니다. string을 바꾸지 않고 테스트할 수 있는 방법을 찾으세요.
-        # opts = table.dialect_options["tibero"]
-        opts = table.dialect_options["oracle"]
+        opts = table.dialect_options[self.dialect.name]
 
         if opts["on_commit"]:
             on_commit_options = opts["on_commit"].replace("_", " ").upper()
@@ -870,29 +866,25 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         return "".join(table_opts)
 
     def get_identity_options(self, identity_options):
-        text = super().get_identity_options(identity_options)
+        text = super(TiberoDDLCompiler, self).get_identity_options(
+            identity_options
+        )
         text = text.replace("NO MINVALUE", "NOMINVALUE")
         text = text.replace("NO MAXVALUE", "NOMAXVALUE")
         text = text.replace("NO CYCLE", "NOCYCLE")
-        # TODO: 이 코드는 sqlalchemy 2.1에서 부터 지원됩니다. sqlalchemy 2.1 버전을
-        #       위해 코멘트를 나중에 해제하십시오.
-        # options = identity_options.dialect_options["tibero"]
-        # if options.get("order") is not None:
-        #     text += " ORDER" if options["order"] else " NOORDER"
-
         if identity_options.order is not None:
             text += " ORDER" if identity_options.order else " NOORDER"
-
         return text.strip()
 
-    def visit_computed_column(self, generated, **kw):
+    def visit_computed_column(self, generated):
         text = "GENERATED ALWAYS AS (%s)" % self.sql_compiler.process(
             generated.sqltext, include_table=False, literal_binds=True
         )
         if generated.persisted is True:
             raise exc.CompileError(
-                "Tibero computed columns do not support 'stored' persistence; "
-                "set the 'persisted' flag to None or False for Tibero support."
+                f"{self.dialect.name.capitalize()} computed columns do not "
+                "support 'stored' persistence; "
+                f"set the 'persisted' flag to None or False for {self.dialect.name.capitalize()} support."
             )
         elif generated.persisted is False:
             text += " VIRTUAL"
@@ -904,21 +896,19 @@ class TiberoDDLCompiler(compiler.DDLCompiler):
         else:
             kind = "ALWAYS" if identity.always else "BY DEFAULT"
         text = "GENERATED %s" % kind
-        # TODO: 이 코드는 sqlalchemy 2.1에서 부터 지원됩니다. sqlalchemy 2.1 버전을
-        #       위해 코멘트를 나중에 해제하십시오.
-        # if identity.dialect_options["tibero"].get("on_null"):
-        #     text += " ON NULL"
         if identity.on_null:
             text += " ON NULL"
-
         text += " AS IDENTITY"
         options = self.get_identity_options(identity)
         if options:
-            text += " (%s)" % options
+            # TODO: Tibero에서 parenthesis가 있으면 에러가 발생합니다.. 이거 버그인것 같은데 확인이 필요합니다.
+            # text += " (%s)" % options
+            text += " %s" % options
         return text
 
 
 class TiberoIdentifierPreparer(compiler.IdentifierPreparer):
+
     reserved_words = {x.lower() for x in RESERVED_WORDS}
     illegal_initial_characters = {str(dig) for dig in range(0, 10)}.union(
         ["_", "$"]
@@ -930,12 +920,14 @@ class TiberoIdentifierPreparer(compiler.IdentifierPreparer):
         return (
             lc_value in self.reserved_words
             or value[0] in self.illegal_initial_characters
-            or not self.legal_characters.match(str(value))
+            or not self.legal_characters.match(util.text_type(value))
         )
 
     def format_savepoint(self, savepoint):
         name = savepoint.ident.lstrip("_")
-        return super().format_savepoint(savepoint, name)
+        return super(TiberoIdentifierPreparer, self).format_savepoint(
+            savepoint, name
+        )
 
 
 class TiberoExecutionContext(default.DefaultExecutionContext):
@@ -947,31 +939,46 @@ class TiberoExecutionContext(default.DefaultExecutionContext):
             type_,
         )
 
-    def pre_exec(self):
-        if self.statement and "_tibero_dblink" in self.execution_options:
-            self.statement = self.statement.replace(
-                dictionary.DB_LINK_PLACEHOLDER,
-                self.execution_options["_tibero_dblink"],
-            )
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # 메서드 추가와 oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+    # pre_exec()
+
+# hack: 테스트할 때 string에 tibero가 아닌 oracle을 요구하는 경우때문.
+_test_dialect_name = "oracle"
 
 
 class TiberoDialect(default.DefaultDialect):
-    name = "oracle"
+    name = "tibero"
     supports_statement_cache = True
     supports_alter = True
+
+    # TAG: 1.4 2.0 차이
+    # 2.0에 사라진 내용
+    supports_unicode_statements = False
+    # TAG: 1.4 2.0 차이
+    # 2.0에 사라진 내용
+    supports_unicode_binds = False
+
     max_identifier_length = 128
 
-    _supports_offset_fetch = True
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+    # _supports_offset_fetch
 
-    insert_returning = True
-    update_returning = True
-    delete_returning = True
-
-    div_is_floordiv = False
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # sqlalchemy 내부 구조 변경이 필요함
+    # insert_returning, update_returning, delete_returning, div_is_floordiv
 
     supports_simple_order_by_label = False
     cte_follows_insert = True
-    returns_native_bytes = True
+
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # oracle dialect 내부 구조 변경으로 2.0 처럼 구현 가능하나 colspec에서 많은 코드 변경을 요구
+    # returns_native_bytes
 
     supports_sequences = True
     sequences_optional = False
@@ -991,7 +998,7 @@ class TiberoDialect(default.DefaultDialect):
 
     statement_compiler = TiberoCompiler
     ddl_compiler = TiberoDDLCompiler
-    type_compiler_cls = TiberoTypeCompiler
+    type_compiler = TiberoTypeCompiler
     preparer = TiberoIdentifierPreparer
     execution_ctx_cls = TiberoExecutionContext
 
@@ -1005,14 +1012,12 @@ class TiberoDialect(default.DefaultDialect):
             {"resolve_synonyms": False, "on_commit": None, "compress": False},
         ),
         (sa_schema.Index, {"bitmap": False, "compress": False}),
-        (sa_schema.Sequence, {"order": None}),
-        (sa_schema.Identity, {"order": None, "on_null": None}),
     ]
 
     @util.deprecated_params(
         use_binds_for_limits=(
             "1.4",
-            "The ``use_binds_for_limits`` Tibero dialect parameter is "
+            f"The ``use_binds_for_limits`` {_test_dialect_name.capitalize()} dialect parameter is "
             "deprecated. The dialect now renders LIMIT /OFFSET integers "
             "inline in all cases using a post-compilation hook, so that the "
             "value is still represented by a 'bound parameter' on the Core "
@@ -1023,170 +1028,156 @@ class TiberoDialect(default.DefaultDialect):
         self,
         use_ansi=True,
         optimize_limits=False,
+        use_binds_for_limits=None,
         use_nchar_for_unicode=False,
-        exclude_tablespaces=("SYSTEM", "SYSSUB"),
-        enable_offset_fetch=True,
-        **kwargs,
+        exclude_tablespaces=("SYSTEM", "SYSAUX"),
+        **kwargs
     ):
         default.DefaultDialect.__init__(self, **kwargs)
         self._use_nchar_for_unicode = use_nchar_for_unicode
         self.use_ansi = use_ansi
         self.optimize_limits = optimize_limits
         self.exclude_tablespaces = exclude_tablespaces
-        self.enable_offset_fetch = self._supports_offset_fetch = (
-            enable_offset_fetch
-        )
+
+        # TAG: 1.4 2.0 차이
+        # 1.4 구현 부족
+        # oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+        # _supports_offset_fetch
 
     def initialize(self, connection):
-        super().initialize(connection)
+        super(TiberoDialect, self).initialize(connection)
+        # TAG: 1.4 2.0 차이
+        # 1.4 구현 부족
+        # oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+        # _supports_offset_fetch
 
-        self.supports_identity_columns = self.server_version_info >= (7,)
-        self._supports_offset_fetch = (
-            self.enable_offset_fetch and self.server_version_info >= (7,)
+        # TAG: 1.4 2.0 차이
+        # 2.0에 사라진 내용
+        self.implicit_returning = self.__dict__.get(
+            "implicit_returning", self.server_version_info > (10,)
         )
-
-    @property
-    def _supports_percent_with_ties(self):
-        # 현재 모든 버전이 FETCH FIRST PERCENT와 WITH TIES를 지원하지 않습니다.
-        return False
 
     @property
     def _supports_table_compression(self):
-        return self.server_version_info and self.server_version_info >= (7,)
+        # Note: Tibero 6이상에서부터 지원하기 때문에 사실상 없어도 되는 옵션
+        return self.server_version_info and self.server_version_info >= (6,)
 
     @property
     def _supports_table_compress_for(self):
-        return self.server_version_info and self.server_version_info >= (7,)
+        # Note: Tibero 6이상에서부터 지원하기 때문에 사실상 없어도 되는 옵션
+        return self.server_version_info and self.server_version_info >= (6,)
 
     @property
     def _supports_char_length(self):
+        # Note: Tibero 6이상에서부터 지원하기 때문에 사실상 없어도 되는 옵션
         return not (
-            self.server_version_info and self.server_version_info < (7,)
+            self.server_version_info and self.server_version_info < (6,)
         )
 
     @property
     def _supports_update_returning_computed_cols(self):
-        return self.server_version_info and self.server_version_info >= (7,)
+        # Note: Tibero 6이상에서부터 지원하기 때문에 사실상 없어도 되는 옵션
+        return self.server_version_info and self.server_version_info >= (6,)
 
-    @property
-    def _supports_except_all(self):
-        return self.server_version_info and self.server_version_info >= (7,)
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+    # 그런데 Tibero 6이ㅏㅇ부터 지원하기 때문에 사실상 없어도 되는 옵션
+    # _supports_except_all()
 
     def do_release_savepoint(self, connection, name):
-        # Like Oracle, Tibero does not support RELEASE SAVEPOINT
+        # Tibero does not support RELEASE SAVEPOINT
         pass
 
     def _check_max_identifier_length(self, connection):
-        # use the default which is defined in max_identifier_length field
         return None
 
-    def get_isolation_level_values(self, dbapi_connection):
-        return ["READ COMMITTED", "SERIALIZABLE"]
+    # TAG: 1.4 2.0 차이
+    # 2.0에 사라진 내용
+    def _check_unicode_returns(self, connection):
+        additional_tests = [
+            expression.cast(
+                expression.literal_column("'test nvarchar2 returns'"),
+                sqltypes.NVARCHAR(60),
+            )
+        ]
+        return super(TiberoDialect, self)._check_unicode_returns(
+            connection, additional_tests
+        )
+
+    # TAG: 1.4 2.0 차이
+    # 2.0에 사라진 내용
+    _isolation_lookup = ["READ COMMITTED", "SERIALIZABLE"]
+
+    # TAG: 1.4 2.0 차이
+    # 2.0에 사라진 내용
+    def get_isolation_level(self, connection):
+        raise NotImplementedError("implemented by pyodbc dialect")
 
     def get_default_isolation_level(self, dbapi_conn):
         try:
             return self.get_isolation_level(dbapi_conn)
         except NotImplementedError:
             raise
-        except Exception:
+        except:
             return "READ COMMITTED"
 
-    def _execute_reflection(
-        self, connection, query, dblink, returns_long, params=None
-    ):
-        # TODO: schema_translate_map이 무엇인지 어떻게 작동하는지 알아보기
-        #       sqlalchemy tibero dialect를 통해서 dblink가 작동하는지 확인하기
-        if dblink and not dblink.startswith("@"):
-            dblink = f"@{dblink}"
-        execution_options = {
-            # handle db links
-            "_tibero_dblink": dblink or "",
-            # override any schema translate map
-            "schema_translate_map": None,
-        }
+    def get_isolation_level_values(self, dbapi_connection):
+        return ["READ COMMITTED", "SERIALIZABLE"]
 
-        # TODO: 이 if-statement가 티베로에서도 필요한지 확인하기
-        if dblink and returns_long:
-            # Oracle seems to error with
-            # "ORA-00997: illegal use of LONG datatype" when returning
-            # LONG columns via a dblink in a query with bind params
-            # This type seems to be very hard to cast into something else
-            # so it seems easier to just use bind param in this case
-            def visit_bindparam(bindparam):
-                bindparam.literal_execute = True
+    # TAG: 1.4 2.0 차이
+    # 2.0에 사라진 내용
+    def set_isolation_level(self, connection, level):
+        raise NotImplementedError("implemented by pyodbc dialect")
 
-            query = visitors.cloned_traverse(
-                query, {}, {"bindparam": visit_bindparam}
-            )
-        return connection.execute(
-            query, params, execution_options=execution_options
-        )
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+    # _excecute_reflection(), _has_table_query()
 
-    @util.memoized_property
-    def _has_table_query(self):
-        # materialized views are returned by all_tables
-        tables = (
-            select(
-                dictionary.all_tables.c.table_name,
-                dictionary.all_tables.c.owner,
-            )
-            .union_all(
-                select(
-                    dictionary.all_views.c.view_name.label("table_name"),
-                    dictionary.all_views.c.owner,
-                )
-            )
-            .subquery("tables_and_views")
-        )
-
-        query = select(tables.c.table_name).where(
-            tables.c.table_name == bindparam("table_name"),
-            tables.c.owner == bindparam("owner"),
-        )
-        return query
-
-    @reflection.cache
-    def has_table(
-        self, connection, table_name, schema=None, dblink=None, **kw
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link."""
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # has_table()는 materialized views에서는 검사하지 않음
+    # dblink, synonym 기능 없음
+    # denormalize_schema_name() 사용 x
+    def has_table(self, connection, table_name, schema=None):
         self._ensure_has_table_connection(connection)
 
         if not schema:
             schema = self.default_schema_name
 
-        params = {
-            "table_name": self.denormalize_name(table_name),
-            "owner": self.denormalize_schema_name(schema),
-        }
-        cursor = self._execute_reflection(
-            connection,
-            self._has_table_query,
-            dblink,
-            returns_long=False,
-            params=params,
+        cursor = connection.execute(
+            sql.text(
+                "SELECT table_name FROM all_tables "
+                "WHERE table_name = CAST(:name AS VARCHAR2(128)) "
+                "AND owner = CAST(:schema_name AS VARCHAR2(128))"
+            ),
+            dict(
+                name=self.denormalize_name(table_name),
+                schema_name=self.denormalize_name(schema),
+            ),
         )
-        return bool(cursor.scalar())
+        return cursor.first() is not None
 
-    @reflection.cache
-    def has_sequence(
-        self, connection, sequence_name, schema=None, dblink=None, **kw
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link."""
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # dblink, synonym 기능 없음
+    # denormalize_schema_name() 사용 x
+    def has_sequence(self, connection, sequence_name, schema=None):
         if not schema:
             schema = self.default_schema_name
-
-        query = select(dictionary.all_sequences.c.sequence_name).where(
-            dictionary.all_sequences.c.sequence_name
-            == self.denormalize_schema_name(sequence_name),
-            dictionary.all_sequences.c.sequence_owner
-            == self.denormalize_schema_name(schema),
+        cursor = connection.execute(
+            sql.text(
+                "SELECT sequence_name FROM all_sequences "
+                "WHERE sequence_name = :name AND "
+                "sequence_owner = :schema_name"
+            ),
+            dict(
+                name=self.denormalize_name(sequence_name),
+                schema_name=self.denormalize_name(schema),
+            ),
         )
-
-        cursor = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        )
-        return bool(cursor.scalar())
+        return cursor.first() is not None
 
     def _get_default_schema_name(self, connection):
         return self.normalize_name(
@@ -1195,277 +1186,170 @@ class TiberoDialect(default.DefaultDialect):
             ).scalar()
         )
 
-    def denormalize_schema_name(self, name):
-        # look for quoted_name
-        force = getattr(name, "quote", None)
-        if force is None and name == "public":
-            # look for case insensitive, no quoting specified, "public"
-            return "PUBLIC"
-        return super().denormalize_name(name)
+    # TAG: 1.4 2.0 차이
+    # 1.4 구현 부족
+    # 메서드 추가와 oracle dialect 내부 구조 변경만으로 2.0 처럼 구현 가능
+    # denormalize_schema_name()
 
-    @reflection.flexi_cache(
-        ("schema", InternalTraversal.dp_string),
-        ("filter_names", InternalTraversal.dp_string_list),
-        ("dblink", InternalTraversal.dp_string),
-    )
-    def _get_synonyms(self, connection, schema, filter_names, dblink, **kw):
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
-        )
-
-        has_filter_names, params = self._prepare_filter_names(filter_names)
-        query = select(
-            dictionary.all_synonyms.c.synonym_name,
-            dictionary.all_synonyms.c.org_object_name,
-            dictionary.all_synonyms.c.org_object_owner,
-        ).where(dictionary.all_synonyms.c.owner == owner)
-        if has_filter_names:
-            query = query.where(
-                dictionary.all_synonyms.c.synonym_name.in_(
-                    params["filter_names"]
-                )
-            )
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).mappings()
-        return result.all()
-
-    @lru_cache()
-    def _all_objects_query(
-        self, owner, scope, kind, has_filter_names, has_mat_views
+    # TAG: 1.4 2.0 차이
+    # 2.0에 사라진 내용
+    #
+    # 원본 코드로는 티베로에 사용할 수 없기에 변경을 함
+    def _resolve_synonym(
+        self,
+        connection,
+        desired_owner=None,
+        desired_synonym=None,
+        desired_table=None,
     ):
-        query = select(dictionary.all_objects.c.object_name).where(
-            dictionary.all_objects.c.owner == owner
-        )
+        """search for a local synonym matching the given desired owner/name.
 
-        # NOTE: materialized views are listed in all_objects twice;
-        # once as MATERIALIZE VIEW and once as TABLE
-        if kind is ObjectKind.ANY:
-            # materilaized view are listed also as tables so there is no
-            # need to add them to the in_.
-            query = query.where(
-                dictionary.all_objects.c.object_type.in_(("TABLE", "VIEW"))
+        if desired_owner is None, attempts to locate a distinct owner.
+
+        returns the actual name, owner, dblink name, and synonym name if
+        found.
+        """
+        def parse_org_object_name(org_object_name: str):
+            """
+            org_object_name에서 table_name과 dblink를 분리
+
+            예:
+              "EMP@SALES"@REMOTE_DB → ('EMP@SALES', 'REMOTE_DB')
+              EMPLOYEES → ('EMPLOYEES', None)
+              NORMAL@LINK → ('NORMAL', 'LINK')
+            """
+            # 패턴 1: 따옴표로 싸인 테이블 이름 + @ + dblink
+            match = re.match(r'^"(.+)"@(.+)$', org_object_name)
+            if match:
+                return match.group(1), match.group(2)
+            else:
+                return org_object_name, None
+
+
+        q = (
+            "SELECT owner, org_object_owner, org_object_name, db_link, "
+            "synonym_name FROM all_synonyms WHERE "
+        )
+        clauses = []
+        params = {}
+        if desired_synonym:
+            clauses.append(
+                "synonym_name = CAST(:synonym_name AS VARCHAR2(128))"
+            )
+            params["synonym_name"] = desired_synonym
+        if desired_owner:
+            clauses.append("owner = CAST(:desired_owner AS VARCHAR2(128))")
+            params["desired_owner"] = desired_owner
+        if desired_table:
+            clauses.append("org_object_name = CAST(:tname AS VARCHAR2(128))")
+            params["tname"] = desired_table
+
+        q += " AND ".join(clauses)
+
+        result = connection.execution_options(future_result=True).execute(
+            sql.text(q), params
+        )
+        if desired_owner:
+            row = result.mappings().first()
+            if row:
+                table_name, db_link = parse_org_object_name((row["org_object_name"]))
+                return (
+                    table_name,
+                    row["org_object_owner"],
+                    db_link,
+                    row["synonym_name"],
+                )
+            else:
+                return None, None, None, None
+        else:
+            rows = result.mappings().all()
+            if len(rows) > 1:
+                raise AssertionError(
+                    "There are multiple tables visible to the schema, you "
+                    "must specify owner"
+                )
+            elif len(rows) == 1:
+                row = rows[0]
+                table_name, db_link = parse_org_object_name((row["org_object_name"]))
+                return (
+                    table_name,
+                    row["org_object_owner"],
+                    db_link,
+                    row["synonym_name"],
+                )
+            else:
+                return None, None, None, None
+
+    # TAG: 1.4 2.0 차이
+    # 2.0에 사라진 내용
+    @reflection.cache
+    def _prepare_reflection_args(
+        self,
+        connection,
+        table_name,
+        schema=None,
+        resolve_synonyms=False,
+        dblink="",
+        **kw
+    ):
+        if resolve_synonyms:
+            actual_name, owner, dblink, synonym = self._resolve_synonym(
+                connection,
+                desired_owner=self.denormalize_name(schema),
+                desired_synonym=self.denormalize_name(table_name),
             )
         else:
-            object_type = []
-            if ObjectKind.VIEW in kind:
-                object_type.append("VIEW")
-            if (
-                ObjectKind.MATERIALIZED_VIEW in kind
-                and ObjectKind.TABLE not in kind
-            ):
-                # materilaized view are listed also as tables so there is no
-                # need to add them to the in_ if also selecting tables.
-                object_type.append("MATERIALIZED VIEW")
-            if ObjectKind.TABLE in kind:
-                object_type.append("TABLE")
-                if has_mat_views and ObjectKind.MATERIALIZED_VIEW not in kind:
-                    # materialized view are listed also as tables,
-                    # so they need to be filtered out
-                    # EXCEPT ALL / MINUS profiles as faster than using
-                    # NOT EXISTS or NOT IN with a subquery, but it's in
-                    # general faster to get the mat view names and exclude
-                    # them only when needed
-                    query = query.where(
-                        dictionary.all_objects.c.object_name.not_in(
-                            bindparam("mat_views")
-                        )
-                    )
-            query = query.where(
-                dictionary.all_objects.c.object_type.in_(object_type)
+            actual_name, owner, dblink, synonym = None, None, None, None
+        if not actual_name:
+            actual_name = self.denormalize_name(table_name)
+
+        if dblink:
+            # using user_db_links here since all_db_links appears
+            # to have more restricted permissions.
+            # https://docs.oracle.com/cd/B28359_01/server.111/b28310/ds_admin005.htm
+            # will need to hear from more users if we are doing
+            # the right thing here.  See [ticket:2619]
+            owner = connection.scalar(
+                sql.text(
+                    "SELECT username FROM user_db_links " "WHERE db_link=:link"
+                ),
+                dict(link=dblink),
             )
+            dblink = "@" + dblink
+        elif not owner:
+            owner = self.denormalize_name(schema or self.default_schema_name)
 
-        # handles scope
-        if scope is ObjectScope.DEFAULT:
-            query = query.where(dictionary.all_objects.c.temporary == "N")
-        elif scope is ObjectScope.TEMPORARY:
-            query = query.where(dictionary.all_objects.c.temporary == "Y")
-
-        if has_filter_names:
-            query = query.where(
-                dictionary.all_objects.c.object_name.in_(
-                    bindparam("filter_names")
-                )
-            )
-        return query
-
-    @reflection.flexi_cache(
-        ("schema", InternalTraversal.dp_string),
-        ("scope", InternalTraversal.dp_plain_obj),
-        ("kind", InternalTraversal.dp_plain_obj),
-        ("filter_names", InternalTraversal.dp_string_list),
-        ("dblink", InternalTraversal.dp_string),
-    )
-    def _get_all_objects(
-        self, connection, schema, scope, kind, filter_names, dblink, **kw
-    ):
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
-        )
-
-        has_filter_names, params = self._prepare_filter_names(filter_names)
-        has_mat_views = False
-        if (
-            ObjectKind.TABLE in kind
-            and ObjectKind.MATERIALIZED_VIEW not in kind
-        ):
-            # see note in _all_objects_query
-            mat_views = self.get_materialized_view_names(
-                connection, schema, dblink, _normalize=False, **kw
-            )
-            if mat_views:
-                params["mat_views"] = mat_views
-                has_mat_views = True
-
-        query = self._all_objects_query(
-            owner, scope, kind, has_filter_names, has_mat_views
-        )
-
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False, params=params
-        ).scalars()
-
-        return result.all()
-
-    def _handle_synonyms_decorator(fn):
-        @wraps(fn)
-        def wrapper(self, *args, **kwargs):
-            return self._handle_synonyms(fn, *args, **kwargs)
-
-        return wrapper
-
-    def _handle_synonyms(self, fn, connection, *args, **kwargs):
-        if not kwargs.get("tibero_resolve_synonyms", False):
-            return fn(self, connection, *args, **kwargs)
-
-        original_kw = kwargs.copy()
-        schema = kwargs.pop("schema", None)
-        result = self._get_synonyms(
-            connection,
-            schema=schema,
-            filter_names=kwargs.pop("filter_names", None),
-            dblink=kwargs.pop("dblink", None),
-            info_cache=kwargs.get("info_cache", None),
-        )
-
-        dblinks_owners = defaultdict(dict)
-        for row in result:
-            # TODO: 바로 아래 라인이 문제없이 작동하는지 테스트 필요
-            remote_table_name, db_link = row["db_link"].split("@")
-            db_link = "@" + db_link
-
-            key = db_link, row["org_object_owner"]
-            tn = self.normalize_name(row["org_object_name"])
-            dblinks_owners[key][tn] = row["synonym_name"]
-
-        if not dblinks_owners:
-            # No synonym, do the plain thing
-            return fn(self, connection, *args, **original_kw)
-
-        data = {}
-        for (dblink, table_owner), mapping in dblinks_owners.items():
-            call_kw = {
-                **original_kw,
-                "schema": table_owner,
-                "dblink": self.normalize_name(dblink),
-                "filter_names": mapping.keys(),
-            }
-            call_result = fn(self, connection, *args, **call_kw)
-            for (_, tn), value in call_result:
-                synonym_name = self.normalize_name(mapping[tn])
-                data[(schema, synonym_name)] = value
-        return data.items()
+        return (actual_name, owner, dblink or "", synonym)
 
     @reflection.cache
-    def get_schema_names(self, connection, dblink=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link."""
-        query = select(dictionary.all_users.c.username).order_by(
-            dictionary.all_users.c.username
-        )
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).scalars()
-        return [self.normalize_name(row) for row in result]
+    def get_schema_names(self, connection, **kw):
+        s = "SELECT username FROM all_users ORDER BY username"
+        cursor = connection.exec_driver_sql(s)
+        return [self.normalize_name(row[0]) for row in cursor]
 
     @reflection.cache
-    def get_table_names(self, connection, schema=None, dblink=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link."""
+    def get_table_names(self, connection, schema=None, **kw):
+        schema = self.denormalize_name(schema or self.default_schema_name)
+
         # note that table_names() isn't loading DBLINKed or synonym'ed tables
         if schema is None:
             schema = self.default_schema_name
 
-        den_schema = self.denormalize_schema_name(schema)
-        if kw.get("tibero_resolve_synonyms", False):
-            # TODO: 애초에 synonym과 연결된 테이블이 다 all_tables안에 있을거 같은데
-            #       all_synonyms도 탐색할 이유가 있는지 의문이 있습니다. 만약
-            #       테이블 이름 + 테이블과 연결된 synonym 이름을 보여준다면 이해가 됩니다.
-            #
-            # TODO: 쿼리가 너무 복잡한 것 같습니다. 쉽게 이해할 수 있는 쿼리가 있는지 고려해야 합니다.
-            tables = (
-                select(
-                    dictionary.all_tables.c.table_name,
-                    dictionary.all_tables.c.owner,
-                    dictionary.all_tables.c.iot_type,
-                    dictionary.all_tables.c.duration,
-                    dictionary.all_tables.c.tablespace_name,
-                )
-                .union_all(
-                    select(
-                        dictionary.all_synonyms.c.synonym_name.label(
-                            "table_name"
-                        ),
-                        dictionary.all_synonyms.c.owner,
-                        dictionary.all_tables.c.iot_type,
-                        dictionary.all_tables.c.duration,
-                        dictionary.all_tables.c.tablespace_name,
-                    )
-                    .select_from(dictionary.all_tables)
-                    .join(
-                        dictionary.all_synonyms,
-                        and_(
-                            dictionary.all_tables.c.table_name
-                            == dictionary.all_synonyms.c.table_name,
-                            dictionary.all_tables.c.owner
-                            == func.coalesce(
-                                dictionary.all_synonyms.c.table_owner,
-                                dictionary.all_synonyms.c.owner,
-                            ),
-                        ),
-                    )
-                )
-                .subquery("available_tables")
-            )
-        else:
-            tables = dictionary.all_tables
-
-        query = select(tables.c.table_name)
+        sql_str = "SELECT table_name FROM all_tables WHERE "
         if self.exclude_tablespaces:
-            query = query.where(
-                func.coalesce(
-                    tables.c.tablespace_name, "no tablespace"
-                ).not_in(self.exclude_tablespaces)
+            sql_str += (
+                "nvl(tablespace_name, 'no tablespace') "
+                "NOT IN (%s) AND "
+                % (", ".join(["'%s'" % ts for ts in self.exclude_tablespaces]))
             )
-        query = query.where(
-            tables.c.owner == den_schema,
-            tables.c.iot_type.is_(null()),
-            tables.c.duration.is_(null()),
+        sql_str += (
+            "OWNER = :owner "
+            "AND (IOT_TYPE IS NULL OR IOT_TYPE = 'IOT') "
+            "AND DURATION IS NULL"
         )
 
-        # remove materialized views
-        mat_query = select(
-            dictionary.all_mviews.c.mview_name.label("table_name")
-        ).where(dictionary.all_mviews.c.owner == den_schema)
-
-        query = (
-            query.except_all(mat_query)
-            if self._supports_except_all
-            else query.except_(mat_query)
-        )
-
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).scalars()
-        return [self.normalize_name(row) for row in result]
+        cursor = connection.execute(sql.text(sql_str), dict(owner=schema))
+        return [self.normalize_name(row[0]) for row in cursor]
 
     @reflection.cache
     def get_temp_table_names(self, connection, **kw):
@@ -1478,465 +1362,194 @@ class TiberoDialect(default.DefaultDialect):
                 "NOT IN (%s) AND "
                 % (", ".join(["'%s'" % ts for ts in self.exclude_tablespaces]))
             )
-        sql_str += "OWNER = :owner " "AND DURATION IS NOT NULL"
+        sql_str += (
+            "OWNER = :owner "
+            "AND (IOT_TYPE IS NULL OR IOT_TYPE = 'IOT') "
+            "AND DURATION IS NOT NULL"
+        )
 
         cursor = connection.execute(sql.text(sql_str), dict(owner=schema))
         return [self.normalize_name(row[0]) for row in cursor]
 
-    # TODO: 아래 코드는 이상이 없어보이나 다음의 에러를 발생시킵니다. 이유를 찾기 바랍니다.
-    #       (pyodbc.Error) ('ERREX', '[ERREX]  Values are from incompatible
-    #       data types. (-11022) (SQLExecDirectW)')
-    # @reflection.cache
-    # def get_temp_table_names(self, connection, dblink=None, **kw):
-    #     """Supported kw arguments are: ``dblink`` to reflect via a db link."""
-    #     schema = self.denormalize_schema_name(self.default_schema_name)
-    #
-    #     query = select(dictionary.all_tables.c.table_name)
-    #     if self.exclude_tablespaces:
-    #         query = query.where(
-    #             func.coalesce(
-    #                 dictionary.all_tables.c.tablespace_name, "no tablespace"
-    #             ).not_in(self.exclude_tablespaces)
-    #         )
-    #
-    #     # TODO: iot_name이 왜 조건에 필요한지 모르겠습니다. temp table을 생성할 때
-    #     #       index organized table로 만들 수 없는 것으로 알고 있습니다.
-    #     #       temp table를 찾는 조건에 iot_name은 불필요해보입니다.
-    #     #       또한 duration 칼럼이 아닌 temporary ='Y' 을 사용해도 괜찮아 보입니다.
-    #     query = query.where(
-    #         dictionary.all_tables.c.owner == schema,
-    #         dictionary.all_tables.c.iot_type.is_(null()),
-    #         dictionary.all_tables.c.duration.is_not(null()),
-    #     )
-    #
-    #     result = self._execute_reflection(
-    #         connection, query, dblink, returns_long=False
-    #     ).scalars()
-    #     return [self.normalize_name(row) for row in result]
+    @reflection.cache
+    def get_view_names(self, connection, schema=None, **kw):
+        schema = self.denormalize_name(schema or self.default_schema_name)
+        s = sql.text("SELECT view_name FROM all_views WHERE owner = :owner")
+        cursor = connection.execute(
+            s, dict(owner=self.denormalize_name(schema))
+        )
+        return [self.normalize_name(row[0]) for row in cursor]
 
     @reflection.cache
-    def get_materialized_view_names(
-        self, connection, schema=None, dblink=None, _normalize=True, **kw
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link."""
+    def get_sequence_names(self, connection, schema=None, **kw):
         if not schema:
             schema = self.default_schema_name
-
-        query = select(dictionary.all_mviews.c.mview_name).where(
-            dictionary.all_mviews.c.owner
-            == self.denormalize_schema_name(schema)
+        cursor = connection.execute(
+            sql.text(
+                "SELECT sequence_name FROM all_sequences "
+                "WHERE sequence_owner = :schema_name"
+            ),
+            dict(schema_name=self.denormalize_name(schema)),
         )
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).scalars()
-        if _normalize:
-            return [self.normalize_name(row) for row in result]
-        else:
-            return result.all()
-
-    @reflection.cache
-    def get_view_names(self, connection, schema=None, dblink=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link."""
-        if not schema:
-            schema = self.default_schema_name
-
-        query = select(dictionary.all_views.c.view_name).where(
-            dictionary.all_views.c.owner
-            == self.denormalize_schema_name(schema)
-        )
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).scalars()
-        return [self.normalize_name(row) for row in result]
-
-    @reflection.cache
-    def get_sequence_names(self, connection, schema=None, dblink=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link."""
-        if not schema:
-            schema = self.default_schema_name
-        query = select(dictionary.all_sequences.c.sequence_name).where(
-            dictionary.all_sequences.c.sequence_owner
-            == self.denormalize_schema_name(schema)
-        )
-
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).scalars()
-        return [self.normalize_name(row) for row in result]
-
-    def _value_or_raise(self, data, table, schema):
-        table = self.normalize_name(str(table))
-        try:
-            return dict(data)[(schema, table)]
-        except KeyError:
-            raise exc.NoSuchTableError(
-                f"{schema}.{table}" if schema else table
-            ) from None
-
-    def _prepare_filter_names(self, filter_names):
-        if filter_names:
-            fn = [self.denormalize_name(name) for name in filter_names]
-            return True, {"filter_names": fn}
-        else:
-            return False, {}
+        return [self.normalize_name(row[0]) for row in cursor]
 
     @reflection.cache
     def get_table_options(self, connection, table_name, schema=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        data = self.get_multi_table_options(
-            connection,
-            schema=schema,
-            filter_names=[table_name],
-            scope=ObjectScope.ANY,
-            kind=ObjectKind.ANY,
-            **kw,
-        )
-        return self._value_or_raise(data, table_name, schema)
-
-    @lru_cache()
-    def _table_options_query(
-        self, owner, scope, kind, has_filter_names, has_mat_views
-    ):
-        query = select(
-            dictionary.all_tables.c.table_name,
-            (
-                dictionary.all_tables.c.compression
-                if self._supports_table_compression
-                else sql.null().label("compression")
-            ),
-            (
-                dictionary.all_tables.c.compress_for
-                if self._supports_table_compress_for
-                else sql.null().label("compress_for")
-            ),
-        ).where(dictionary.all_tables.c.owner == owner)
-        if has_filter_names:
-            query = query.where(
-                dictionary.all_tables.c.table_name.in_(
-                    bindparam("filter_names")
-                )
-            )
-        if scope is ObjectScope.DEFAULT:
-            query = query.where(dictionary.all_tables.c.duration.is_(null()))
-        elif scope is ObjectScope.TEMPORARY:
-            query = query.where(
-                dictionary.all_tables.c.duration.is_not(null())
-            )
-
-        if (
-            has_mat_views
-            and ObjectKind.TABLE in kind
-            and ObjectKind.MATERIALIZED_VIEW not in kind
-        ):
-            # cant use EXCEPT ALL / MINUS here because we don't have an
-            # excludable row vs. the query above
-            # outerjoin + where null works better on oracle 21 but 11 does
-            # not like it at all. this is the next best thing
-
-            query = query.where(
-                dictionary.all_tables.c.table_name.not_in(
-                    bindparam("mat_views")
-                )
-            )
-        elif (
-            ObjectKind.TABLE not in kind
-            and ObjectKind.MATERIALIZED_VIEW in kind
-        ):
-            query = query.where(
-                dictionary.all_tables.c.table_name.in_(bindparam("mat_views"))
-            )
-        return query
-
-    @_handle_synonyms_decorator
-    def get_multi_table_options(
-        self,
-        connection,
-        *,
-        schema,
-        filter_names,
-        scope,
-        kind,
-        dblink=None,
-        **kw,
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
-        )
-
-        has_filter_names, params = self._prepare_filter_names(filter_names)
-        has_mat_views = False
-
-        if (
-            ObjectKind.TABLE in kind
-            and ObjectKind.MATERIALIZED_VIEW not in kind
-        ):
-            # see note in _table_options_query
-            mat_views = self.get_materialized_view_names(
-                connection, schema, dblink, _normalize=False, **kw
-            )
-            if mat_views:
-                params["mat_views"] = mat_views
-                has_mat_views = True
-        elif (
-            ObjectKind.TABLE not in kind
-            and ObjectKind.MATERIALIZED_VIEW in kind
-        ):
-            mat_views = self.get_materialized_view_names(
-                connection, schema, dblink, _normalize=False, **kw
-            )
-            params["mat_views"] = mat_views
-
         options = {}
-        default = ReflectionDefaults.table_options
 
-        if ObjectKind.TABLE in kind or ObjectKind.MATERIALIZED_VIEW in kind:
-            query = self._table_options_query(
-                owner, scope, kind, has_filter_names, has_mat_views
-            )
-            result = self._execute_reflection(
-                connection, query, dblink, returns_long=False, params=params
-            )
+        resolve_synonyms = kw.get("tibero_resolve_synonyms", False)
+        dblink = kw.get("dblink", "")
+        info_cache = kw.get("info_cache")
 
-            for table, compression, compress_for in result:
-                if compression == "ENABLED":
-                    data = {"tibero_compress": compress_for}
+        (table_name, schema, dblink, synonym) = self._prepare_reflection_args(
+            connection,
+            table_name,
+            schema,
+            resolve_synonyms,
+            dblink,
+            info_cache=info_cache,
+        )
+
+        params = {"table_name": table_name}
+
+        columns = ["table_name"]
+        if self._supports_table_compression:
+            columns.append("compression")
+        if self._supports_table_compress_for:
+            columns.append("compress_for")
+
+        text = (
+            "SELECT %(columns)s "
+            "FROM ALL_TABLES%(dblink)s "
+            "WHERE table_name = CAST(:table_name AS VARCHAR(128))"
+        )
+
+        if schema is not None:
+            params["owner"] = schema
+            text += " AND owner = CAST(:owner AS VARCHAR(128)) "
+        text = text % {"dblink": dblink, "columns": ", ".join(columns)}
+
+        result = connection.execute(sql.text(text), params)
+
+        enabled = dict(DISABLED=False, ENABLED=True)
+
+        row = result.first()
+        if row:
+            if "compression" in row._fields and enabled.get(
+                row.compression, False
+            ):
+                if "compress_for" in row._fields:
+                    options[self.name + "_compress"] = row.compress_for
                 else:
-                    data = default()
-                options[(schema, self.normalize_name(table))] = data
-        if ObjectKind.VIEW in kind and ObjectScope.DEFAULT in scope:
-            # add the views (no temporary views)
-            for view in self.get_view_names(connection, schema, dblink, **kw):
-                if not filter_names or view in filter_names:
-                    options[(schema, view)] = default()
+                    options[self.name + "_compress"] = True
 
-        return options.items()
+        return options
 
     @reflection.cache
     def get_columns(self, connection, table_name, schema=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
         """
 
-        data = self.get_multi_columns(
-            connection,
-            schema=schema,
-            filter_names=[table_name],
-            scope=ObjectScope.ANY,
-            kind=ObjectKind.ANY,
-            **kw,
-        )
-        return self._value_or_raise(data, table_name, schema)
+        kw arguments can be:
 
-    def _run_batches(
-        self, connection, query, dblink, returns_long, mappings, all_objects
-    ):
-        each_batch = 500
-        batches = list(all_objects)
-        while batches:
-            batch = batches[0:each_batch]
-            batches[0:each_batch] = []
+            tibero_resolve_synonyms
 
-            result = self._execute_reflection(
-                connection,
-                query,
-                dblink,
-                returns_long=returns_long,
-                params={"all_objects": batch},
-            )
-            if mappings:
-                yield from result.mappings()
-            else:
-                yield from result
+            dblink
 
-    @lru_cache()
-    def _column_query(self, owner):
-        all_cols = dictionary.all_tab_cols
-        all_comments = dictionary.all_col_comments
-        all_ids = dictionary.all_tab_identity_cols
-
-        # 오라클 코드에서는 all_tab_cols에 default_on_null 칼럼이 있지만
-        # 티베로에는 없습니다. 그래서 임의의 숫자 99999를 사용했습니다.
-        # 나중에 티베로에 칼럼들이 추가된다면 임의의 숫자를 올바른 숫자로 바꿔주세요.
-        if self.server_version_info >= (999999,):
-            add_cols = (
-                all_cols.c.default_on_null,
-                sql.case(
-                    (all_ids.c.table_name.is_(None), sql.null()),
-                    else_=all_ids.c.generation_type
-                    + ","
-                    + all_ids.c.identity_options,
-                ).label("identity_options"),
-            )
-            join_identity_cols = True
-        else:
-            add_cols = (
-                sql.null().label("default_on_null"),
-                sql.null().label("identity_options"),
-            )
-            join_identity_cols = False
-
-        # NOTE: on oracle cannot create tables/views without columns and
-        # a table cannot have all column hidden:
-        # ORA-54039: table must have at least one column that is not invisible
-        # all_tab_cols returns data for tables/views/mat-views.
-        # all_tab_cols does not return recycled tables
-
-        query = (
-            select(
-                all_cols.c.table_name,
-                all_cols.c.column_name,
-                all_cols.c.data_type,
-                all_cols.c.char_length,
-                all_cols.c.data_precision,
-                all_cols.c.data_scale,
-                all_cols.c.nullable,
-                all_cols.c.data_default,
-                all_comments.c.comments,
-                all_cols.c.virtual_column,
-                *add_cols,
-            )
-            .select_from(all_cols)
-            # NOTE: all_col_comments has a row for each column even if no
-            # comment is present, so a join could be performed, but there
-            # seems to be no difference compared to an outer join
-            .outerjoin(
-                all_comments,
-                and_(
-                    all_cols.c.table_name == all_comments.c.table_name,
-                    all_cols.c.column_name == all_comments.c.column_name,
-                    all_cols.c.owner == all_comments.c.owner,
-                ),
-            )
-        )
-        if join_identity_cols:
-            query = query.outerjoin(
-                all_ids,
-                and_(
-                    all_cols.c.table_name == all_ids.c.table_name,
-                    all_cols.c.column_name == all_ids.c.column_name,
-                    all_cols.c.owner == all_ids.c.owner,
-                ),
-            )
-
-        # Oracle은 hidden_column을 지원하고 값으로는 YES 또는 NO입니다. 반면에
-        # Tibero는 hidden_column을 지원하지 않으면 값으로는 N만 가지는 것 같습니다.
-        query = query.where(
-            all_cols.c.table_name.in_(bindparam("all_objects")),
-            all_cols.c.hidden_column == "N",
-            all_cols.c.owner == owner,
-        ).order_by(all_cols.c.table_name, all_cols.c.column_id)
-        return query
-
-    @_handle_synonyms_decorator
-    def get_multi_columns(
-        self,
-        connection,
-        *,
-        schema,
-        filter_names,
-        scope,
-        kind,
-        dblink=None,
-        **kw,
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
         """
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
-        )
-        query = self._column_query(owner)
 
-        if (
-            filter_names
-            and kind is ObjectKind.ANY
-            and scope is ObjectScope.ANY
-        ):
-            all_objects = [self.denormalize_name(n) for n in filter_names]
-        else:
-            all_objects = self._get_all_objects(
-                connection, schema, scope, kind, filter_names, dblink, **kw
-            )
+        resolve_synonyms = kw.get("tibero_resolve_synonyms", False)
+        dblink = kw.get("dblink", "")
+        info_cache = kw.get("info_cache")
 
-        columns = defaultdict(list)
-
-        # all_tab_cols.data_default is LONG
-        result = self._run_batches(
+        (table_name, schema, dblink, synonym) = self._prepare_reflection_args(
             connection,
-            query,
+            table_name,
+            schema,
+            resolve_synonyms,
             dblink,
-            returns_long=True,
-            mappings=True,
-            all_objects=all_objects,
+            info_cache=info_cache,
         )
+        columns = []
+        if self._supports_char_length:
+            char_length_col = "char_length"
+        else:
+            char_length_col = "data_length"
 
-        def maybe_int(value):
-            if isinstance(value, float) and value.is_integer():
-                return int(value)
-            else:
-                return value
 
-        remove_size = re.compile(r"\(\d+\)")
+        identity_cols = """\
+            NULL as default_on_null,
+            (
+                SELECT id.generation_type || ',' || id.IDENTITY_OPTIONS
+                FROM ALL_TAB_IDENTITY_COLS%(dblink)s id
+                WHERE col.table_name = id.table_name
+                AND col.column_name = id.column_name
+                AND col.owner = id.owner
+            ) AS identity_options""" % {
+            "dblink": dblink
+        }
 
-        for row_dict in result:
-            table_name = self.normalize_name(row_dict["table_name"])
-            orig_colname = row_dict["column_name"]
-            colname = self.normalize_name(orig_colname)
-            coltype = row_dict["data_type"]
-            precision = maybe_int(row_dict["data_precision"])
+        params = {"table_name": table_name}
+
+        text = """
+            SELECT
+                col.column_name,
+                col.data_type,
+                col.%(char_length_col)s,
+                col.data_precision,
+                col.data_scale,
+                col.nullable,
+                col.data_default,
+                com.comments,
+                col.virtual_column,
+                %(identity_cols)s
+            FROM all_tab_cols%(dblink)s col
+            LEFT JOIN all_col_comments%(dblink)s com
+            ON col.table_name = com.table_name
+            AND col.column_name = com.column_name
+            AND col.owner = com.owner
+            WHERE col.table_name = CAST(:table_name AS VARCHAR2(128))
+            AND col.hidden_column = 'N'
+        """
+        if schema is not None:
+            params["owner"] = schema
+            text += " AND col.owner = :owner "
+        text += " ORDER BY col.column_id"
+        text = text % {
+            "dblink": dblink,
+            "char_length_col": char_length_col,
+            "identity_cols": identity_cols,
+        }
+
+        c = connection.execute(sql.text(text), params)
+
+        for row in c:
+            colname = self.normalize_name(row[0])
+            orig_colname = row[0]
+            coltype = row[1]
+            length = row[2]
+            precision = row[3]
+            scale = row[4]
+            nullable = row[5] == "Y"
+            default = row[6]
+            comment = row[7]
+            generated = row[8]
+            default_on_nul = row[9]
+            identity_options = row[10]
 
             if coltype == "NUMBER":
-                scale = maybe_int(row_dict["data_scale"])
-
-                # oracle의 경우 Integer type으로 column을 정의하면 데이터베이스 내부적으로
-                # Number(NULL, 0)을 사용하게 됩니다. 하지만 티베로는 사용자가 Integer type을
-                # 명시한 것을 찾을 패턴이 없습니다. 그래서 precision가 38이고 scale이 0인 것을
-                # Integer로 사용하기로 결정했습니다. 티베로에서는 안타깝게도 Number(38, 0)과
-                # Number(38), Integer를 구분할만한 패턴이 없습니다.
                 if precision == 38 and scale == 0:
                     coltype = INTEGER()
                 else:
                     coltype = NUMBER(precision, scale)
-
-            # 아래 elif coltype == "FLOAT"는 true인 경우가 없습니다. 이유는
-            # 티베로에서 모든 FLOAT, DOUBLE PRECISION 모두 Number로 저장되며 단순히
-            # 데이터베이스만 보고 NUMBER인지, FLOAT인지, DOUBLE PRECISION인지 구분할 수
-            # 있는 방법이 없습니다. 따라서 안전하게 언급된 모든 타입의 range를 표현할 수 있는
-            # NUMBER 타입을 반환합니다. 그럼에도 아래 코드를 남긴 이유는 원래 oracle dialect
-            # 코드 수정이 있을 때 tibero에 적용하기 쉽게 하기 위해서입니다.
             elif coltype == "FLOAT":
-                # https://docs.oracle.com/cd/B14117_01/server.101/b10758/sqlqr06.htm
-                if precision == 126:
-                    # The DOUBLE PRECISION datatype is a floating-point
-                    # number with binary precision 126.
-                    coltype = DOUBLE_PRECISION()
-                elif precision == 63:
-                    # The REAL datatype is a floating-point number with a
-                    # binary precision of 63, or 18 decimal.
-                    coltype = REAL()
-                else:
-                    # non standard precision
-                    coltype = FLOAT(binary_precision=precision)
-
+                # TODO: support "precision" here as "binary_precision"
+                coltype = FLOAT()
             elif coltype in ("VARCHAR", "NVARCHAR", "CHAR", "NCHAR"):
-                # Oracle에서 VARCHAR 는 자동으로 VARCHAR2로 변환이 되는데
-                # Tibero에서는 VARCHAR2가 자동으로 VARCHAR로 변환이 됩니다.
-                # Oracle에서 NVARCHAR 라는 타입은 없으나 NVARCHAR2 라는
-                # 타입을 가지고 있습니다. Tibero에서는 VARCHAR2가 자동으로
-                # VARCHAR로 변환이 됩니다.
-                char_length = maybe_int(row_dict["char_length"])
-                coltype = self.ischema_names.get(coltype)(char_length)
+                coltype = self.ischema_names.get(coltype)(length)
             elif "WITH TIME ZONE" in coltype:
                 coltype = TIMESTAMP(timezone=True)
-            elif "WITH LOCAL TIME ZONE" in coltype:
-                coltype = TIMESTAMP(local_timezone=True)
             else:
-                coltype = re.sub(remove_size, "", coltype)
+                coltype = re.sub(r"\(\d+\)", "", coltype)
                 try:
                     coltype = self.ischema_names[coltype]
                 except KeyError:
@@ -1946,17 +1559,15 @@ class TiberoDialect(default.DefaultDialect):
                     )
                     coltype = sqltypes.NULLTYPE
 
-            default = row_dict["data_default"]
-            if row_dict["virtual_column"] == "Y":
+            if generated == "YES":
                 computed = dict(sqltext=default)
                 default = None
             else:
                 computed = None
 
-            identity_options = row_dict["identity_options"]
             if identity_options is not None:
                 identity = self._parse_identity_options(
-                    identity_options, row_dict["default_on_null"]
+                    identity_options, default_on_nul
                 )
                 default = None
             else:
@@ -1965,9 +1576,10 @@ class TiberoDialect(default.DefaultDialect):
             cdict = {
                 "name": colname,
                 "type": coltype,
-                "nullable": row_dict["nullable"] == "Y",
+                "nullable": nullable,
                 "default": default,
-                "comment": row_dict["comments"],
+                "autoincrement": "auto",
+                "comment": comment,
             }
             if orig_colname.lower() == orig_colname:
                 cdict["quote"] = True
@@ -1976,31 +1588,19 @@ class TiberoDialect(default.DefaultDialect):
             if identity is not None:
                 cdict["identity"] = identity
 
-            columns[(schema, table_name)].append(cdict)
+            columns.append(cdict)
+        return columns
 
-        # NOTE: default not needed since all tables have columns
-        # default = ReflectionDefaults.columns
-        # return (
-        #     (key, value if value else default())
-        #     for key, value in columns.items()
-        # )
-        return columns.items()
-
-    def _parse_identity_options(self, identity_options, default_on_null):
+    def _parse_identity_options(self, identity_options, default_on_nul):
         # identity_options is a string that starts with 'ALWAYS,' or
         # 'BY DEFAULT,' and continues with
         # START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 123, MIN_VALUE: 1,
         # CYCLE_FLAG: N, CACHE_SIZE: 1, ORDER_FLAG: N, SCALE_FLAG: N,
         # EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
-        #
-        # Oracle Dialect의 원작성자가 적은 위 코멘트에 추가로 작성하겠습니다.
-        # sqlplus같은 도구를 사용해 ALL_TAB_IDENTITY_COLS 테이블의 IDENTITY_OPTIONS
-        # 칼럼을 조회하면 'ALWAYS' 또는 'BY DEFAULT'로 시작하지 않습니다. _column_query() 메서드에서
-        # 제공되는 쿼리에서 'ALWAYS' 또는 'BY DEFAULT'로 시작되도록 하는 로직이 있습니다.
         parts = [p.strip() for p in identity_options.split(",")]
         identity = {
             "always": parts[0] == "ALWAYS",
-            "tibero_on_null": default_on_null == "YES",
+            "on_null": default_on_nul == "YES",
         }
 
         for part in parts[1:]:
@@ -2008,771 +1608,399 @@ class TiberoDialect(default.DefaultDialect):
             value = value.strip()
 
             if "START WITH" in option:
-                identity["start"] = int(value)
+                identity["start"] = compat.long_type(value)
             elif "INCREMENT BY" in option:
-                identity["increment"] = int(value)
+                identity["increment"] = compat.long_type(value)
             elif "MAX_VALUE" in option:
-                identity["maxvalue"] = int(value)
+                identity["maxvalue"] = compat.long_type(value)
             elif "MIN_VALUE" in option:
-                identity["minvalue"] = int(value)
+                identity["minvalue"] = compat.long_type(value)
             elif "CYCLE_FLAG" in option:
                 identity["cycle"] = value == "Y"
             elif "CACHE_SIZE" in option:
-                identity["cache"] = int(value)
+                identity["cache"] = compat.long_type(value)
             elif "ORDER_FLAG" in option:
-                identity["tibero_order"] = value == "Y"
+                identity["order"] = value == "Y"
         return identity
 
     @reflection.cache
-    def get_table_comment(self, connection, table_name, schema=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        data = self.get_multi_table_comment(
-            connection,
-            schema=schema,
-            filter_names=[table_name],
-            scope=ObjectScope.ANY,
-            kind=ObjectKind.ANY,
-            **kw,
-        )
-        return self._value_or_raise(data, table_name, schema)
-
-    @lru_cache()
-    def _comment_query(self, owner, scope, kind, has_filter_names):
-        # NOTE: all_tab_comments / all_mview_comments have a row for all
-        # object even if they don't have comments
-        queries = []
-        if ObjectKind.TABLE in kind or ObjectKind.VIEW in kind:
-            # all_tab_comments returns also plain views
-            tbl_view = select(
-                dictionary.all_tab_comments.c.table_name,
-                dictionary.all_tab_comments.c.comments,
-            ).where(
-                dictionary.all_tab_comments.c.owner == owner,
-                dictionary.all_tab_comments.c.table_name.not_like("BIN$%"),
-            )
-            if ObjectKind.VIEW not in kind:
-                tbl_view = tbl_view.where(
-                    dictionary.all_tab_comments.c.table_type == "TABLE"
-                )
-            elif ObjectKind.TABLE not in kind:
-                tbl_view = tbl_view.where(
-                    dictionary.all_tab_comments.c.table_type == "VIEW"
-                )
-            queries.append(tbl_view)
-        if ObjectKind.MATERIALIZED_VIEW in kind:
-            mat_view = select(
-                dictionary.all_mview_comments.c.mview_name.label("table_name"),
-                dictionary.all_mview_comments.c.comments,
-            ).where(
-                dictionary.all_mview_comments.c.owner == owner,
-                dictionary.all_mview_comments.c.mview_name.not_like("BIN$%"),
-            )
-            queries.append(mat_view)
-        if len(queries) == 1:
-            query = queries[0]
-        else:
-            union = sql.union_all(*queries).subquery("tables_and_views")
-            query = select(union.c.table_name, union.c.comments)
-
-        name_col = query.selected_columns.table_name
-
-        if scope in (ObjectScope.DEFAULT, ObjectScope.TEMPORARY):
-            temp = "Y" if scope is ObjectScope.TEMPORARY else "N"
-            # need distinct since materialized view are listed also
-            # as tables in all_objects
-            query = query.distinct().join(
-                dictionary.all_objects,
-                and_(
-                    dictionary.all_objects.c.owner == owner,
-                    dictionary.all_objects.c.object_name == name_col,
-                    dictionary.all_objects.c.temporary == temp,
-                ),
-            )
-        if has_filter_names:
-            query = query.where(name_col.in_(bindparam("filter_names")))
-        return query
-
-    @_handle_synonyms_decorator
-    def get_multi_table_comment(
-        self,
-        connection,
-        *,
-        schema,
-        filter_names,
-        scope,
-        kind,
-        dblink=None,
-        **kw,
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
-        )
-        has_filter_names, params = self._prepare_filter_names(filter_names)
-        query = self._comment_query(owner, scope, kind, has_filter_names)
-
-        result = self._execute_reflection(
-            connection, query, dblink, returns_long=False, params=params
-        )
-        default = ReflectionDefaults.table_comment
-
-        # 아래의 내용은 티베로에는 적용되지 않으나 문제없이 작동되고
-        # 업데이트된 oracle dialect 코드를 보고 tibero dialect 또한 업데이트할 때
-        # 쉽게 업데이트하기 위해 코드를 남겨두었습니다.
-        # materialized views by default seem to have a comment like
-        # "snapshot table for snapshot owner.mat_view_name"
-        ignore_mat_view = "snapshot table for snapshot "
-        return (
-            (
-                (schema, self.normalize_name(table)),
-                (
-                    {"text": comment}
-                    if comment is not None
-                    and not comment.startswith(ignore_mat_view)
-                    else default()
-                ),
-            )
-            for table, comment in result
-        )
-
-    @reflection.cache
-    def get_indexes(self, connection, table_name, schema=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        data = self.get_multi_indexes(
-            connection,
-            schema=schema,
-            filter_names=[table_name],
-            scope=ObjectScope.ANY,
-            kind=ObjectKind.ANY,
-            **kw,
-        )
-        return self._value_or_raise(data, table_name, schema)
-
-    @lru_cache()
-    def _index_query(self, owner):
-        # HACK
-        # CASE 문을 사용하여 정규식에 맞는 경우 'SYS'를 붙임
-        # oracle의 dialect._index_query()는 index_name과 index position에 따라 row
-        # order를 결정합니다. 그런데 티베로는 index 이름 짓는 규칙이 오라클이랑 달라서 테스트에서
-        # 실패하는 문제가 발생합니다. 우회방안으로 sql query 실행시 index name을 오라클이랑 비슷하게 변경하고
-        # 변경된 index name으로 순서를 결정하도록 했습니다. 이 order가 중요할 수 있으니 최대한 sqlalchemy의
-        # 행동과 따라하기 위해 변경했으나 솔직히 이 순서가 중요한 것 같지는 않습니다.
-        # 테스트 스위트에서 정답지를 변경하거나 테스트의 동작을 수정할 수도 있지만, Tibero Dialect에서
-        # 코드를 수정하기로 한 이유는, Oracle과 비교해 차이가 발생할 경우 가능한 서버에 가까운 쪽에서 수정하는
-        # 것이 클라이언트 쪽에서 발생할 수 있는 불일치를 최소화할 수 있다고 판단했기 때문입니다.
-        index_name = sql.case(
-            (
-                sql.text(
-                    "REGEXP_LIKE(a_ind_columns.index_name, '^_.*CON\\d+$')"
-                ),
-                sql.literal_column("'SYS'")
-                + dictionary.all_ind_columns.c.index_name,
-            ),
-            else_=dictionary.all_ind_columns.c.index_name,
-        ).label("index_name")
-
-        return (
-            select(
-                dictionary.all_ind_columns.c.table_name,
-                index_name,
-                dictionary.all_ind_columns.c.column_name,
-                dictionary.all_indexes.c.index_type,
-                dictionary.all_indexes.c.uniqueness,
-                dictionary.all_indexes.c.compression,
-                dictionary.all_indexes.c.prefix_length,
-                dictionary.all_ind_columns.c.descend,
-                dictionary.all_ind_expressions.c.column_expression,
-            )
-            .select_from(dictionary.all_ind_columns)
-            .join(
-                dictionary.all_indexes,
-                sql.and_(
-                    dictionary.all_ind_columns.c.index_name
-                    == dictionary.all_indexes.c.index_name,
-                    dictionary.all_ind_columns.c.index_owner
-                    == dictionary.all_indexes.c.owner,
-                ),
-            )
-            .outerjoin(
-                # NOTE: this adds about 20% to the query time. Using a
-                # case expression with a scalar subquery only when needed
-                # with the assumption that most indexes are not expression
-                # would be faster but oracle does not like that with
-                # LONG datatype. It errors with:
-                # ORA-00997: illegal use of LONG datatype
-                dictionary.all_ind_expressions,
-                sql.and_(
-                    dictionary.all_ind_expressions.c.index_name
-                    == dictionary.all_ind_columns.c.index_name,
-                    dictionary.all_ind_expressions.c.index_owner
-                    == dictionary.all_ind_columns.c.index_owner,
-                    dictionary.all_ind_expressions.c.column_position
-                    == dictionary.all_ind_columns.c.column_position,
-                ),
-            )
-            .where(
-                dictionary.all_indexes.c.table_owner == owner,
-                dictionary.all_indexes.c.table_name.in_(
-                    bindparam("all_objects")
-                ),
-            )
-            .order_by(
-                sql.literal_column("index_name"),
-                dictionary.all_ind_columns.c.column_position,
-            )
-        )
-
-    @reflection.flexi_cache(
-        ("schema", InternalTraversal.dp_string),
-        ("dblink", InternalTraversal.dp_string),
-        ("all_objects", InternalTraversal.dp_string_list),
-    )
-    def _get_indexes_rows(self, connection, schema, dblink, all_objects, **kw):
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
-        )
-
-        query = self._index_query(owner)
-
-        # NOTE: get_multi_indexes()는 SQLAlchemy에서는 primary
-        #       key index를 제외한 index들만 반환하는 것이 spec인 듯 합니다.
-        #       문서를 보았을 때 그런 말은 없으나 oracle dialect는 그렇게 구현
-        #       되어 있습니다.
-        pks = set()
-        for row_dict in self._get_all_constraint_rows(
-            connection, schema, dblink, all_objects, **kw
-        ):
-            if row_dict["constraint_type"] != "P":
-                continue
-
-            # mview의 index 중에 i_snap$으로 시작하는 index가 있습니다.
-            # oracle에서는 특정 설정없이 mview를 생성하면 새로운 index가
-            # 생성되고 all_constraints view에서 index는 constraint_name과
-            # index_name이 같은 string은 가집니다. 반면에 tibero에서는 원본 테이블의
-            # index에 링크된 i_snap$ index를 사용하는 것을 확인했습니다. 이는 곧,
-            # i_snap$ 인덱스의 경우 all_constraints view에서 constraint_name은
-            # 원본 index 이름을 가지고 index_name이 i_snap$인 것을 의미합니다.
-            # self._index_query()는 constraint_name이 아닌 index_name만을 반환하므로
-            # i_snap$이 primary key index라면 pks에 추가해줘야 합니다.
-            index_name = row_dict.get("index_name")
-            constraint_name = row_dict["constraint_name"]
-            if index_name and index_name != constraint_name:
-                pks.add(index_name)
-            else:
-                pks.add(constraint_name)
-
-        # all_ind_expressions.column_expression is LONG
-        result = self._run_batches(
-            connection,
-            query,
-            dblink,
-            returns_long=True,
-            mappings=True,
-            all_objects=all_objects,
-        )
-
-        return [
-            row_dict
-            for row_dict in result
-            if row_dict["index_name"] not in pks
-        ]
-
-    @_handle_synonyms_decorator
-    def get_multi_indexes(
-        self,
-        connection,
-        *,
-        schema,
-        filter_names,
-        scope,
-        kind,
-        dblink=None,
-        **kw,
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        all_objects = self._get_all_objects(
-            connection, schema, scope, kind, filter_names, dblink, **kw
-        )
-
-        uniqueness = {"NONUNIQUE": False, "UNIQUE": True}
-        enabled = {"DISABLED": False, "ENABLED": True}
-        is_bitmap = {"BITMAP", "FUNCTION-BASED BITMAP"}
-
-        indexes = defaultdict(dict)
-
-        for row_dict in self._get_indexes_rows(
-            connection, schema, dblink, all_objects, **kw
-        ):
-            index_name = self.normalize_name(row_dict["index_name"])
-            table_name = self.normalize_name(row_dict["table_name"])
-            table_indexes = indexes[(schema, table_name)]
-
-            if index_name not in table_indexes:
-                table_indexes[index_name] = index_dict = {
-                    "name": index_name,
-                    "column_names": [],
-                    "dialect_options": {},
-                    "unique": uniqueness.get(row_dict["uniqueness"], False),
-                }
-                do = index_dict["dialect_options"]
-                if row_dict["index_type"] in is_bitmap:
-                    do["tibero_bitmap"] = True
-                if enabled.get(row_dict["compression"], False):
-                    do["tibero_compress"] = row_dict["prefix_length"]
-
-            else:
-                index_dict = table_indexes[index_name]
-
-            expr = row_dict["column_expression"]
-            if expr is not None:
-                index_dict["column_names"].append(None)
-                if "expressions" in index_dict:
-                    index_dict["expressions"].append(expr)
-                else:
-                    index_dict["expressions"] = index_dict["column_names"][:-1]
-                    index_dict["expressions"].append(expr)
-
-                if row_dict["descend"].lower() != "asc":
-                    assert row_dict["descend"].lower() == "desc"
-                    cs = index_dict.setdefault("column_sorting", {})
-                    cs[expr] = ("desc",)
-            else:
-                assert row_dict["descend"].lower() == "asc"
-                cn = self.normalize_name(row_dict["column_name"])
-                index_dict["column_names"].append(cn)
-                if "expressions" in index_dict:
-                    index_dict["expressions"].append(cn)
-
-        default = ReflectionDefaults.indexes
-
-        return (
-            (key, list(indexes[key].values()) if key in indexes else default())
-            for key in (
-                (schema, self.normalize_name(obj_name))
-                for obj_name in all_objects
-            )
-        )
-
-    @reflection.cache
-    def get_pk_constraint(self, connection, table_name, schema=None, **kw):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        data = self.get_multi_pk_constraint(
-            connection,
-            schema=schema,
-            filter_names=[table_name],
-            scope=ObjectScope.ANY,
-            kind=ObjectKind.ANY,
-            **kw,
-        )
-        return self._value_or_raise(data, table_name, schema)
-
-    @lru_cache()
-    def _constraint_query(self, owner):
-        local = dictionary.all_cons_columns.alias("local")
-        remote = dictionary.all_cons_columns.alias("remote")
-        # HACK
-        # CASE 문을 사용하여 정규식에 맞는 경우 'SYS'를 붙임
-        # oracle의 dialect._constraint_query()는 constraint_name과 position에 따라 row
-        # order를 결정합니다. 그런데 티베로는 constraint_name 이름 짓는 규칙이 오라클이랑 달라서 테스트에서
-        # 실패하는 문제가 발생합니다. 우회방안으로 sql query 실행시 constraint_name을 오라클이랑 비슷하게 변경하고
-        # 변경된 constraint_name으로 순서를 결정하도록 했습니다. 이 order가 중요할 수 있으니 최대한
-        # sqlalchemy의 행동과 따라하기 위해 변경했으나 솔직히 이 순서가 중요한 것 같지는 않습니다.
-        # 테스트 스위트에서 정답지를 변경하거나 테스트의 동작을 수정할 수도 있지만, Tibero Dialect에서
-        # 코드를 수정하기로 한 이유는, Oracle과 비교해 차이가 발생할 경우 가능한 서버에 가까운 쪽에서 수정하는
-        # 것이 클라이언트 쪽에서 발생할 수 있는 불일치를 최소화할 수 있다고 판단했기 때문입니다.
-        constraint_name = sql.case(
-            (
-                sql.text(
-                    "REGEXP_LIKE(a_constraints.constraint_name, '^_.*CON\\d+$')"
-                ),
-                sql.literal_column("'SYS'")
-                + dictionary.all_constraints.c.constraint_name,
-            ),
-            else_=dictionary.all_constraints.c.constraint_name,
-        ).label("constraint_name")
-        index_name = sql.case(
-            (
-                sql.text(
-                    "REGEXP_LIKE(a_constraints.index_name, '^_.*CON\\d+$')"
-                ),
-                sql.literal_column("'SYS'")
-                + dictionary.all_constraints.c.index_name,
-            ),
-            else_=dictionary.all_constraints.c.index_name,
-        ).label("index_name")
-
-        return (
-            select(
-                dictionary.all_constraints.c.table_name,
-                dictionary.all_constraints.c.constraint_type,
-                constraint_name,
-                local.c.column_name.label("local_column"),
-                remote.c.table_name.label("remote_table"),
-                remote.c.column_name.label("remote_column"),
-                remote.c.owner.label("remote_owner"),
-                dictionary.all_constraints.c.search_condition,
-                dictionary.all_constraints.c.delete_rule,
-                index_name,
-            )
-            .select_from(dictionary.all_constraints)
-            .join(
-                local,
-                and_(
-                    local.c.owner == dictionary.all_constraints.c.owner,
-                    dictionary.all_constraints.c.constraint_name
-                    == local.c.constraint_name,
-                ),
-            )
-            .outerjoin(
-                remote,
-                and_(
-                    dictionary.all_constraints.c.r_owner == remote.c.owner,
-                    dictionary.all_constraints.c.r_constraint_name
-                    == remote.c.constraint_name,
-                    or_(
-                        remote.c.position.is_(sql.null()),
-                        local.c.position == remote.c.position,
-                    ),
-                ),
-            )
-            .where(
-                dictionary.all_constraints.c.owner == owner,
-                dictionary.all_constraints.c.table_name.in_(
-                    bindparam("all_objects")
-                ),
-                dictionary.all_constraints.c.constraint_type.in_(
-                    ("R", "P", "U", "C")
-                ),
-            )
-            .order_by(sql.literal_column("constraint_name"), local.c.position)
-        )
-
-    @reflection.flexi_cache(
-        ("schema", InternalTraversal.dp_string),
-        ("dblink", InternalTraversal.dp_string),
-        ("all_objects", InternalTraversal.dp_string_list),
-    )
-    def _get_all_constraint_rows(
-        self, connection, schema, dblink, all_objects, **kw
-    ):
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
-        )
-        query = self._constraint_query(owner)
-
-        # since the result is cached a list must be created
-        values = list(
-            self._run_batches(
-                connection,
-                query,
-                dblink,
-                returns_long=False,
-                mappings=True,
-                all_objects=all_objects,
-            )
-        )
-        return values
-
-    @_handle_synonyms_decorator
-    def get_multi_pk_constraint(
-        self,
-        connection,
-        *,
-        scope,
-        schema,
-        filter_names,
-        kind,
-        dblink=None,
-        **kw,
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        all_objects = self._get_all_objects(
-            connection, schema, scope, kind, filter_names, dblink, **kw
-        )
-
-        primary_keys = defaultdict(dict)
-        default = ReflectionDefaults.pk_constraint
-
-        for row_dict in self._get_all_constraint_rows(
-            connection, schema, dblink, all_objects, **kw
-        ):
-            if row_dict["constraint_type"] != "P":
-                continue
-            table_name = self.normalize_name(row_dict["table_name"])
-            constraint_name = self.normalize_name(row_dict["constraint_name"])
-            column_name = self.normalize_name(row_dict["local_column"])
-
-            table_pk = primary_keys[(schema, table_name)]
-            if not table_pk:
-                table_pk["name"] = constraint_name
-                table_pk["constrained_columns"] = [column_name]
-            else:
-                table_pk["constrained_columns"].append(column_name)
-
-        return (
-            (key, primary_keys[key] if key in primary_keys else default())
-            for key in (
-                (schema, self.normalize_name(obj_name))
-                for obj_name in all_objects
-            )
-        )
-
-    @reflection.cache
-    def get_foreign_keys(
+    def get_table_comment(
         self,
         connection,
         table_name,
         schema=None,
-        **kw,
+        resolve_synonyms=False,
+        dblink="",
+        **kw
     ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        data = self.get_multi_foreign_keys(
-            connection,
-            schema=schema,
-            filter_names=[table_name],
-            scope=ObjectScope.ANY,
-            kind=ObjectKind.ANY,
-            **kw,
-        )
-        return self._value_or_raise(data, table_name, schema)
 
-    @_handle_synonyms_decorator
-    def get_multi_foreign_keys(
+        info_cache = kw.get("info_cache")
+        (table_name, schema, dblink, synonym) = self._prepare_reflection_args(
+            connection,
+            table_name,
+            schema,
+            resolve_synonyms,
+            dblink,
+            info_cache=info_cache,
+        )
+
+        if not schema:
+            schema = self.default_schema_name
+
+        COMMENT_SQL = """
+            SELECT comments
+            FROM all_tab_comments
+            WHERE table_name = CAST(:table_name AS VARCHAR(128))
+            AND owner = CAST(:schema_name AS VARCHAR(128))
+        """
+
+        c = connection.execute(
+            sql.text(COMMENT_SQL),
+            dict(table_name=table_name, schema_name=schema),
+        )
+        return {"text": c.scalar()}
+
+    @reflection.cache
+    def get_indexes(
         self,
         connection,
-        *,
-        scope,
-        schema,
-        filter_names,
-        kind,
-        dblink=None,
-        **kw,
+        table_name,
+        schema=None,
+        resolve_synonyms=False,
+        dblink="",
+        **kw
     ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        all_objects = self._get_all_objects(
-            connection, schema, scope, kind, filter_names, dblink, **kw
+
+        info_cache = kw.get("info_cache")
+        (table_name, schema, dblink, synonym) = self._prepare_reflection_args(
+            connection,
+            table_name,
+            schema,
+            resolve_synonyms,
+            dblink,
+            info_cache=info_cache,
+        )
+        indexes = []
+
+        params = {"table_name": table_name}
+        text = (
+            "SELECT a.index_name, a.column_name, "
+            "\nb.index_type, b.uniqueness, b.compression, b.prefix_length "
+            "\nFROM ALL_IND_COLUMNS%(dblink)s a, "
+            "\nALL_INDEXES%(dblink)s b "
+            "\nWHERE "
+            "\na.index_name = b.index_name "
+            "\nAND a.table_owner = b.table_owner "
+            "\nAND a.table_name = b.table_name "
+            "\nAND a.table_name = CAST(:table_name AS VARCHAR(128))"
         )
 
+        if schema is not None:
+            params["schema"] = schema
+            text += "AND a.table_owner = :schema "
+
+        text += "ORDER BY a.index_name, a.column_position"
+
+        text = text % {"dblink": dblink}
+
+        q = sql.text(text)
+        rp = connection.execute(q, params)
+        indexes = []
+        last_index_name = None
+        pk_constraint = self.get_pk_constraint(
+            connection,
+            table_name,
+            schema,
+            resolve_synonyms=resolve_synonyms,
+            dblink=dblink,
+            info_cache=kw.get("info_cache"),
+        )
+
+        uniqueness = dict(NONUNIQUE=False, UNIQUE=True)
+        enabled = dict(DISABLED=False, ENABLED=True)
+
+        tibero_sys_col = re.compile(r"SYS_NC\d+\$", re.IGNORECASE)
+
+        index = None
+        for rset in rp:
+            index_name_normalized = self.normalize_name(rset.index_name)
+
+            # skip primary key index.  This is refined as of
+            # [ticket:5421].  Note that ALL_INDEXES.GENERATED will by "Y"
+            # if the name of this index was generated by Tibero, however
+            # if a named primary key constraint was created then this flag
+            # is false.
+            if (
+                pk_constraint
+                and index_name_normalized == pk_constraint["name"]
+            ):
+                continue
+
+            if rset.index_name != last_index_name:
+                index = dict(
+                    name=index_name_normalized,
+                    column_names=[],
+                    dialect_options={},
+                )
+                indexes.append(index)
+            index["unique"] = uniqueness.get(rset.uniqueness, False)
+
+            if rset.index_type in ("BITMAP", "FUNCTION-BASED BITMAP"):
+                index["dialect_options"][self.name + "_bitmap"] = True
+            if enabled.get(rset.compression, False):
+                index["dialect_options"][self.name + "_compress"]\
+                    = rset.prefix_length
+
+            # filter out Tibero SYS_NC names.  could also do an outer join
+            # to the all_tab_columns table and check for real col names there.
+            if not tibero_sys_col.match(rset.column_name):
+                index["column_names"].append(
+                    self.normalize_name(rset.column_name)
+                )
+            last_index_name = rset.index_name
+
+        return indexes
+
+    @reflection.cache
+    def _get_constraint_data(
+        self, connection, table_name, schema=None, dblink="", **kw
+    ):
+
+        params = {"table_name": table_name}
+
+        text = (
+            "SELECT"
+            "\nac.constraint_name,"  # 0
+            "\nac.constraint_type,"  # 1
+            "\nloc.column_name AS local_column,"  # 2
+            "\nrem.table_name AS remote_table,"  # 3
+            "\nrem.column_name AS remote_column,"  # 4
+            "\nrem.owner AS remote_owner,"  # 5
+            "\nloc.position as loc_pos,"  # 6
+            "\nrem.position as rem_pos,"  # 7
+            "\nac.search_condition,"  # 8
+            "\nac.delete_rule"  # 9
+            "\nFROM all_constraints%(dblink)s ac,"
+            "\nall_cons_columns%(dblink)s loc,"
+            "\nall_cons_columns%(dblink)s rem"
+            "\nWHERE ac.table_name = CAST(:table_name AS VARCHAR2(128))"
+            "\nAND ac.constraint_type IN ('R','P', 'U', 'C')"
+        )
+
+        if schema is not None:
+            params["owner"] = schema
+            text += "\nAND ac.owner = CAST(:owner AS VARCHAR2(128))"
+
+        text += (
+            "\nAND ac.owner = loc.owner"
+            "\nAND ac.constraint_name = loc.constraint_name"
+            "\nAND ac.r_owner = rem.owner(+)"
+            "\nAND ac.r_constraint_name = rem.constraint_name(+)"
+            "\nAND (rem.position IS NULL or loc.position=rem.position)"
+            "\nORDER BY ac.constraint_name, loc.position"
+        )
+
+        text = text % {"dblink": dblink}
+        rp = connection.execute(sql.text(text), params)
+        constraint_data = rp.fetchall()
+        return constraint_data
+
+    @reflection.cache
+    def get_pk_constraint(self, connection, table_name, schema=None, **kw):
         resolve_synonyms = kw.get("tibero_resolve_synonyms", False)
+        dblink = kw.get("dblink", "")
+        info_cache = kw.get("info_cache")
 
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
+        (table_name, schema, dblink, synonym) = self._prepare_reflection_args(
+            connection,
+            table_name,
+            schema,
+            resolve_synonyms,
+            dblink,
+            info_cache=info_cache,
+        )
+        pkeys = []
+        constraint_name = None
+        constraint_data = self._get_constraint_data(
+            connection,
+            table_name,
+            schema,
+            dblink,
+            info_cache=kw.get("info_cache"),
         )
 
-        all_remote_owners = set()
-        fkeys = defaultdict(dict)
+        for row in constraint_data:
+            (
+                cons_name,
+                cons_type,
+                local_column,
+                remote_table,
+                remote_column,
+                remote_owner,
+            ) = row[0:2] + tuple([self.normalize_name(x) for x in row[2:6]])
+            if cons_type == "P":
+                if constraint_name is None:
+                    constraint_name = self.normalize_name(cons_name)
+                pkeys.append(local_column)
+        return {"constrained_columns": pkeys, "name": constraint_name}
 
-        for row_dict in self._get_all_constraint_rows(
-            connection, schema, dblink, all_objects, **kw
-        ):
-            if row_dict["constraint_type"] != "R":
-                continue
+    @reflection.cache
+    def get_foreign_keys(self, connection, table_name, schema=None, **kw):
+        """
 
-            table_name = self.normalize_name(row_dict["table_name"])
-            constraint_name = self.normalize_name(row_dict["constraint_name"])
-            table_fkey = fkeys[(schema, table_name)]
+        kw arguments can be:
 
-            assert constraint_name is not None
+            tibero_resolve_synonyms
 
-            local_column = self.normalize_name(row_dict["local_column"])
-            remote_table = self.normalize_name(row_dict["remote_table"])
-            remote_column = self.normalize_name(row_dict["remote_column"])
-            remote_owner_orig = row_dict["remote_owner"]
-            remote_owner = self.normalize_name(remote_owner_orig)
-            if remote_owner_orig is not None:
-                all_remote_owners.add(remote_owner_orig)
+            dblink
 
-            if remote_table is None:
-                # ticket 363
-                if dblink and not dblink.startswith("@"):
-                    dblink = f"@{dblink}"
-                util.warn(
-                    "Got 'None' querying 'table_name' from "
-                    f"all_cons_columns{dblink or ''} - does the user have "
-                    "proper rights to the table?"
-                )
-                continue
+        """
+        requested_schema = schema  # to check later on
+        resolve_synonyms = kw.get("tibero_resolve_synonyms", False)
+        dblink = kw.get("dblink", "")
+        info_cache = kw.get("info_cache")
 
-            if constraint_name not in table_fkey:
-                table_fkey[constraint_name] = fkey = {
-                    "name": constraint_name,
-                    "constrained_columns": [],
-                    "referred_schema": None,
-                    "referred_table": remote_table,
-                    "referred_columns": [],
-                    "options": {},
-                }
+        (table_name, schema, dblink, synonym) = self._prepare_reflection_args(
+            connection,
+            table_name,
+            schema,
+            resolve_synonyms,
+            dblink,
+            info_cache=info_cache,
+        )
 
-                if resolve_synonyms:
-                    # will be removed below
-                    fkey["_ref_schema"] = remote_owner
+        constraint_data = self._get_constraint_data(
+            connection,
+            table_name,
+            schema,
+            dblink,
+            info_cache=kw.get("info_cache"),
+        )
 
-                if schema is not None or remote_owner_orig != owner:
-                    fkey["referred_schema"] = remote_owner
+        def fkey_rec():
+            return {
+                "name": None,
+                "constrained_columns": [],
+                "referred_schema": None,
+                "referred_table": None,
+                "referred_columns": [],
+                "options": {},
+            }
 
-                delete_rule = row_dict["delete_rule"]
-                if delete_rule != "NO ACTION":
-                    fkey["options"]["ondelete"] = delete_rule
+        fkeys = util.defaultdict(fkey_rec)
 
-            else:
-                fkey = table_fkey[constraint_name]
+        for row in constraint_data:
+            (
+                cons_name,
+                cons_type,
+                local_column,
+                remote_table,
+                remote_column,
+                remote_owner,
+            ) = row[0:2] + tuple([self.normalize_name(x) for x in row[2:6]])
 
-            fkey["constrained_columns"].append(local_column)
-            fkey["referred_columns"].append(remote_column)
+            cons_name = self.normalize_name(cons_name)
 
-        if resolve_synonyms and all_remote_owners:
-            query = select(
-                dictionary.all_synonyms.c.owner,
-                dictionary.all_synonyms.c.table_name,
-                dictionary.all_synonyms.c.table_owner,
-                dictionary.all_synonyms.c.synonym_name,
-            ).where(dictionary.all_synonyms.c.owner.in_(all_remote_owners))
-
-            result = self._execute_reflection(
-                connection, query, dblink, returns_long=False
-            ).mappings()
-
-            remote_owners_lut = {}
-            for row in result:
-                synonym_owner = self.normalize_name(row["owner"])
-                table_name = self.normalize_name(row["table_name"])
-
-                remote_owners_lut[(synonym_owner, table_name)] = (
-                    row["table_owner"],
-                    row["synonym_name"],
-                )
-
-            empty = (None, None)
-            for table_fkeys in fkeys.values():
-                for table_fkey in table_fkeys.values():
-                    key = (
-                        table_fkey.pop("_ref_schema"),
-                        table_fkey["referred_table"],
+            if cons_type == "R":
+                if remote_table is None:
+                    # ticket 363
+                    util.warn(
+                        (
+                            "Got 'None' querying 'table_name' from "
+                            "all_cons_columns%(dblink)s - does the user have "
+                            "proper rights to the table?"
+                        )
+                        % {"dblink": dblink}
                     )
-                    remote_owner, syn_name = remote_owners_lut.get(key, empty)
-                    if syn_name:
-                        sn = self.normalize_name(syn_name)
-                        table_fkey["referred_table"] = sn
-                        if schema is not None or remote_owner != owner:
-                            ro = self.normalize_name(remote_owner)
-                            table_fkey["referred_schema"] = ro
-                        else:
-                            table_fkey["referred_schema"] = None
-        default = ReflectionDefaults.foreign_keys
+                    continue
 
-        return (
-            (key, list(fkeys[key].values()) if key in fkeys else default())
-            for key in (
-                (schema, self.normalize_name(obj_name))
-                for obj_name in all_objects
-            )
-        )
+                rec = fkeys[cons_name]
+                rec["name"] = cons_name
+                local_cols, remote_cols = (
+                    rec["constrained_columns"],
+                    rec["referred_columns"],
+                )
+
+                if not rec["referred_table"]:
+                    if resolve_synonyms:
+                        (
+                            ref_remote_name,
+                            ref_remote_owner,
+                            ref_dblink,
+                            ref_synonym,
+                        ) = self._resolve_synonym(
+                            connection,
+                            desired_owner=self.denormalize_name(remote_owner),
+                            desired_table=self.denormalize_name(remote_table),
+                        )
+                        if ref_synonym:
+                            remote_table = self.normalize_name(ref_synonym)
+                            remote_owner = self.normalize_name(
+                                ref_remote_owner
+                            )
+
+                    rec["referred_table"] = remote_table
+
+                    if (
+                        requested_schema is not None
+                        or self.denormalize_name(remote_owner) != schema
+                    ):
+                        rec["referred_schema"] = remote_owner
+
+                    if row[9] != "NO ACTION":
+                        rec["options"]["ondelete"] = row[9]
+
+                local_cols.append(local_column)
+                remote_cols.append(remote_column)
+
+        return list(fkeys.values())
 
     @reflection.cache
     def get_unique_constraints(
         self, connection, table_name, schema=None, **kw
     ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        data = self.get_multi_unique_constraints(
+        resolve_synonyms = kw.get("tibero_resolve_synonyms", False)
+        dblink = kw.get("dblink", "")
+        info_cache = kw.get("info_cache")
+
+        (table_name, schema, dblink, synonym) = self._prepare_reflection_args(
             connection,
-            schema=schema,
-            filter_names=[table_name],
-            scope=ObjectScope.ANY,
-            kind=ObjectKind.ANY,
-            **kw,
-        )
-        return self._value_or_raise(data, table_name, schema)
-
-    @_handle_synonyms_decorator
-    def get_multi_unique_constraints(
-        self,
-        connection,
-        *,
-        scope,
-        schema,
-        filter_names,
-        kind,
-        dblink=None,
-        **kw,
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        all_objects = self._get_all_objects(
-            connection, schema, scope, kind, filter_names, dblink, **kw
+            table_name,
+            schema,
+            resolve_synonyms,
+            dblink,
+            info_cache=info_cache,
         )
 
-        unique_cons = defaultdict(dict)
+        constraint_data = self._get_constraint_data(
+            connection,
+            table_name,
+            schema,
+            dblink,
+            info_cache=kw.get("info_cache"),
+        )
+
+        unique_keys = filter(lambda x: x[1] == "U", constraint_data)
+        uniques_group = groupby(unique_keys, lambda x: x[0])
 
         index_names = {
-            row_dict["index_name"]
-            for row_dict in self._get_indexes_rows(
-                connection, schema, dblink, all_objects, **kw
-            )
+            ix["name"]
+            for ix in self.get_indexes(connection, table_name, schema=schema)
         }
-
-        for row_dict in self._get_all_constraint_rows(
-            connection, schema, dblink, all_objects, **kw
-        ):
-            if row_dict["constraint_type"] != "U":
-                continue
-            table_name = self.normalize_name(row_dict["table_name"])
-            constraint_name_orig = row_dict["constraint_name"]
-            constraint_name = self.normalize_name(constraint_name_orig)
-            column_name = self.normalize_name(row_dict["local_column"])
-            table_uc = unique_cons[(schema, table_name)]
-
-            assert constraint_name is not None
-
-            if constraint_name not in table_uc:
-                table_uc[constraint_name] = uc = {
-                    "name": constraint_name,
-                    "column_names": [],
-                    "duplicates_index": (
-                        constraint_name
-                        if constraint_name_orig in index_names
-                        else None
-                    ),
-                }
-            else:
-                uc = table_uc[constraint_name]
-
-            uc["column_names"].append(column_name)
-
-        default = ReflectionDefaults.unique_constraints
-
-        return (
-            (
-                key,
-                (
-                    list(unique_cons[key].values())
-                    if key in unique_cons
-                    else default()
-                ),
-            )
-            for key in (
-                (schema, self.normalize_name(obj_name))
-                for obj_name in all_objects
-            )
-        )
+        return [
+            {
+                "name": name,
+                "column_names": cols,
+                "duplicates_index": name if name in index_names else None,
+            }
+            for name, cols in [
+                [
+                    self.normalize_name(i[0]),
+                    [self.normalize_name(x[2]) for x in i[1]],
+                ]
+                for i in uniques_group
+            ]
+        ]
 
     @reflection.cache
     def get_view_definition(
@@ -2780,133 +2008,67 @@ class TiberoDialect(default.DefaultDialect):
         connection,
         view_name,
         schema=None,
-        dblink=None,
-        **kw,
+        resolve_synonyms=False,
+        dblink="",
+        **kw
     ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        if kw.get("tibero_resolve_synonyms", False):
-            synonyms = self._get_synonyms(
-                connection, schema, filter_names=[view_name], dblink=dblink
-            )
-            if synonyms:
-                assert len(synonyms) == 1
-                row_dict = synonyms[0]
-                dblink = self.normalize_name(row_dict["db_link"])
-                schema = row_dict["table_owner"]
-                view_name = row_dict["table_name"]
-
-        name = self.denormalize_name(view_name)
-        owner = self.denormalize_schema_name(
-            schema or self.default_schema_name
-        )
-        query = (
-            select(dictionary.all_views.c.text)
-            .where(
-                dictionary.all_views.c.view_name == name,
-                dictionary.all_views.c.owner == owner,
-            )
-            .union_all(
-                select(dictionary.all_mviews.c.query).where(
-                    dictionary.all_mviews.c.mview_name == name,
-                    dictionary.all_mviews.c.owner == owner,
-                )
-            )
+        info_cache = kw.get("info_cache")
+        (view_name, schema, dblink, synonym) = self._prepare_reflection_args(
+            connection,
+            view_name,
+            schema,
+            resolve_synonyms,
+            dblink,
+            info_cache=info_cache,
         )
 
-        rp = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).scalar()
-        if rp is None:
-            raise exc.NoSuchTableError(
-                f"{schema}.{view_name}" if schema else view_name
-            )
-        else:
+        params = {"view_name": view_name}
+        text = "SELECT text FROM all_views WHERE view_name=:view_name"
+
+        if schema is not None:
+            text += " AND owner = :schema"
+            params["schema"] = schema
+
+        rp = connection.execute(sql.text(text), params).scalar()
+        if rp:
+            if util.py2k:
+                rp = rp.decode(self.encoding)
             return rp
+        else:
+            return None
 
     @reflection.cache
     def get_check_constraints(
         self, connection, table_name, schema=None, include_all=False, **kw
     ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``oracle_resolve_synonyms`` to resolve names to synonyms
-        """
-        data = self.get_multi_check_constraints(
+        resolve_synonyms = kw.get("tibero_resolve_synonyms", False)
+        dblink = kw.get("dblink", "")
+        info_cache = kw.get("info_cache")
+
+        (table_name, schema, dblink, synonym) = self._prepare_reflection_args(
             connection,
-            schema=schema,
-            filter_names=[table_name],
-            scope=ObjectScope.ANY,
-            include_all=include_all,
-            kind=ObjectKind.ANY,
-            **kw,
-        )
-        return self._value_or_raise(data, table_name, schema)
-
-    @_handle_synonyms_decorator
-    def get_multi_check_constraints(
-        self,
-        connection,
-        *,
-        schema,
-        filter_names,
-        dblink=None,
-        scope,
-        kind,
-        include_all=False,
-        **kw,
-    ):
-        """Supported kw arguments are: ``dblink`` to reflect via a db link;
-        ``tibero_resolve_synonyms`` to resolve names to synonyms
-        """
-        all_objects = self._get_all_objects(
-            connection, schema, scope, kind, filter_names, dblink, **kw
+            table_name,
+            schema,
+            resolve_synonyms,
+            dblink,
+            info_cache=info_cache,
         )
 
-        not_null = re.compile(r"..+?. IS NOT NULL$")
-
-        check_constraints = defaultdict(list)
-
-        for row_dict in self._get_all_constraint_rows(
-            connection, schema, dblink, all_objects, **kw
-        ):
-            if row_dict["constraint_type"] != "C":
-                continue
-            table_name = self.normalize_name(row_dict["table_name"])
-            constraint_name = self.normalize_name(row_dict["constraint_name"])
-            search_condition = row_dict["search_condition"]
-
-            table_checks = check_constraints[(schema, table_name)]
-            if constraint_name is not None and (
-                include_all or not not_null.match(search_condition)
-            ):
-                table_checks.append(
-                    {"name": constraint_name, "sqltext": search_condition}
-                )
-
-        default = ReflectionDefaults.check_constraints
-
-        return (
-            (
-                key,
-                (
-                    check_constraints[key]
-                    if key in check_constraints
-                    else default()
-                ),
-            )
-            for key in (
-                (schema, self.normalize_name(obj_name))
-                for obj_name in all_objects
-            )
+        constraint_data = self._get_constraint_data(
+            connection,
+            table_name,
+            schema,
+            dblink,
+            info_cache=kw.get("info_cache"),
         )
 
-    def _list_dblinks(self, connection, dblink=None):
-        query = select(dictionary.all_db_links.c.db_link)
-        links = self._execute_reflection(
-            connection, query, dblink, returns_long=False
-        ).scalars()
-        return [self.normalize_name(link) for link in links]
+        check_constraints = filter(lambda x: x[1] == "C", constraint_data)
+
+        return [
+            {"name": self.normalize_name(cons[0]), "sqltext": cons[8]}
+            for cons in check_constraints
+            if include_all or not re.match(r"..+?. IS NOT NULL$", cons[8])
+        ]
 
 
 class _OuterJoinColumn(sql.ClauseElement):

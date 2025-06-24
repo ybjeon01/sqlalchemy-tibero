@@ -1,6 +1,6 @@
+# coding: utf-8
 from sqlalchemy import and_
 from sqlalchemy import bindparam
-from sqlalchemy import cast
 from sqlalchemy import Computed
 from sqlalchemy import exc
 from sqlalchemy import except_
@@ -24,8 +24,9 @@ from sqlalchemy import testing
 from sqlalchemy import text
 from sqlalchemy import type_coerce
 from sqlalchemy import TypeDecorator
-from sqlalchemy import types as sqltypes
 from sqlalchemy import union
+from sqlalchemy_tibero import base as oracle
+from sqlalchemy_tibero import pyodbc as cx_oracle
 from sqlalchemy.engine import default
 from sqlalchemy.sql import column
 from sqlalchemy.sql import ddl
@@ -41,39 +42,13 @@ from sqlalchemy.testing.schema import Column
 from sqlalchemy.testing.schema import Table
 from sqlalchemy.types import TypeEngine
 
-from sqlalchemy_tibero import base as tibero
-
 
 class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
-    # 이 부분은 TiberoDialect의 name가 일치하면 안됩니다. __dialect__는 사용할 TiberoDialect
-    # 위치를 찾기 위해 사용되는 변수이기 때문입니다.
-    __dialect__ = "tibero"
-
-    @testing.fixture
-    def legacy_tibero_limitoffset(self):
-        self.__dialect__ = tibero.TiberoDialect(enable_offset_fetch=False)
-        yield
-        del self.__dialect__
+    __dialect__ = "oracle"
 
     def test_true_false(self):
         self.assert_compile(sql.false(), "0")
         self.assert_compile(sql.true(), "1")
-
-    def test_plain_stringify_returning(self):
-        t = Table(
-            "t",
-            MetaData(),
-            Column("myid", Integer, primary_key=True),
-            Column("name", String, server_default="some str"),
-            Column("description", String, default=func.lower("hi")),
-        )
-        stmt = t.insert().values().return_defaults()
-        eq_ignore_whitespace(
-            str(stmt.compile(dialect=tibero.TiberoDialect())),
-            "INSERT INTO t (description) VALUES (lower(:lower_1)) "
-            "RETURNING t.myid, t.name, t.description "
-            "INTO :ret_0, :ret_1, :ret_2",
-        )
 
     def test_owner(self):
         meta = MetaData()
@@ -93,7 +68,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         )
         self.assert_compile(
             parent.join(child),
-            "ed.parent JOIN ed.child ON ed.parent.id = ed.child.parent_id",
+            "ed.parent JOIN ed.child ON ed.parent.id = " "ed.child.parent_id",
         )
 
     def test_subquery(self):
@@ -108,27 +83,28 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "AS col2 FROM sometable) anon_1",
         )
 
-    # 이 테스트는 Tibero_pyodbc에서는 실패할 수 밖에 없는 테스트입니다. 그래서
-    # 메서드 이름만 남기고 내용을 삭제했습니다. 이름을 지우지 않고 남긴 이유는 이러한
-    # 오라클 테스트가 있다라는 것을 알리기 위해서입니다.
     def test_bindparam_quote(self):
         """test that bound parameters take on quoting for reserved words,
         column names quote flag enabled."""
         # note: this is only in cx_oracle at the moment.  not sure
         # what other hypothetical oracle dialects might need
-        pass
 
-    # TODO: 어떤 테스트인지 확인하고 티베로용으로 변환하기
+        self.assert_compile(bindparam("option"), ':"option"')
+        self.assert_compile(bindparam("plain"), ":plain")
+        t = Table("s", MetaData(), Column("plain", Integer, quote=True))
+        self.assert_compile(
+            t.insert().values(plain=5),
+            'INSERT INTO s ("plain") VALUES (:"plain")',
+        )
+        self.assert_compile(
+            t.update().values(plain=5), 'UPDATE s SET "plain"=:"plain"'
+        )
+
     def test_bindparam_quote_works_on_expanding(self):
         self.assert_compile(
             bindparam("uid", expanding=True),
             "(__[POSTCOMPILE_uid])",
-            dialect=tibero.TiberoDialect(),
-        )
-        self.assert_compile(
-            bindparam("uid", expanding=True),
-            "(__[POSTCOMPILE_uid])",
-            dialect=tibero.TiberoDialect(),
+            dialect=cx_oracle.dialect(),
         )
 
     def test_cte(self):
@@ -136,9 +112,6 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "part", column("part"), column("sub_part"), column("quantity")
         )
 
-        # 이 부분을 dialect="oracle"를 dialect="tibero"로 바꾸면 안됩니다.
-        # 테스트하는 동안에는 base.py의 TiberoDialect의 name이 "oracle"로 설정
-        # 되어 있기 때문입니다.
         included_parts = (
             select(part.c.sub_part, part.c.part, part.c.quantity)
             .where(part.c.part == "p1")
@@ -180,10 +153,10 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "GROUP BY included_parts.sub_part",
         )
 
-    def test_limit_one_legacy(self, legacy_tibero_limitoffset):
+    def test_limit_one(self):
         t = table("sometable", column("col1"), column("col2"))
         s = select(t)
-        c = s.compile(dialect=tibero.TiberoDialect())
+        c = s.compile(dialect=oracle.OracleDialect())
         assert t.c.col1 in set(c._create_result_map()["col1"][1])
         s = select(t).limit(10).offset(20)
         self.assert_compile(
@@ -199,25 +172,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             checkparams={"param_1": 10, "param_2": 20},
         )
 
-        c = s.compile(dialect=tibero.TiberoDialect())
-        eq_(len(c._result_columns), 2)
-        assert t.c.col1 in set(c._create_result_map()["col1"][1])
-
-    def test_limit_one(self):
-        t = table("sometable", column("col1"), column("col2"))
-        s = select(t)
-        c = s.compile(dialect=tibero.TiberoDialect())
-        assert t.c.col1 in set(c._create_result_map()["col1"][1])
-        s = select(t).limit(10).offset(20)
-        self.assert_compile(
-            s,
-            "SELECT sometable.col1, sometable.col2 FROM sometable "
-            "OFFSET __[POSTCOMPILE_param_1] ROWS "
-            "FETCH FIRST __[POSTCOMPILE_param_2] ROWS ONLY",
-            checkparams={"param_1": 20, "param_2": 10},
-        )
-
-        c = s.compile(dialect=tibero.TiberoDialect())
+        c = s.compile(dialect=oracle.OracleDialect())
         eq_(len(c._result_columns), 2)
         assert t.c.col1 in set(c._create_result_map()["col1"][1])
 
@@ -230,26 +185,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         t = table("sometable", column("col1"), column("col2"))
         s = select(t).limit(10).offset(20)
         c = s.compile(
-            dialect=tibero.TiberoDialect(),
-            compile_kwargs={"literal_binds": True},
-        )
-
-        eq_ignore_whitespace(
-            str(c),
-            "SELECT sometable.col1, sometable.col2 FROM sometable "
-            "OFFSET 20 ROWS FETCH FIRST 10 ROWS ONLY",
-        )
-
-    def test_limit_one_literal_binds_legacy(self, legacy_tibero_limitoffset):
-        """test for #6863.
-
-        the bug does not appear to have affected Oracle's case.
-
-        """
-        t = table("sometable", column("col1"), column("col2"))
-        s = select(t).limit(10).offset(20)
-        c = s.compile(
-            dialect=tibero.TiberoDialect(enable_offset_fetch=False),
+            dialect=oracle.OracleDialect(),
             compile_kwargs={"literal_binds": True},
         )
 
@@ -262,7 +198,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "WHERE ROWNUM <= 10 + 20) anon_1 WHERE ora_rn > 20",
         )
 
-    def test_limit_one_firstrows_legacy(self):
+    def test_limit_one_firstrows(self):
         t = table("sometable", column("col1"), column("col2"))
         s = select(t)
         s = select(t).limit(10).offset(20)
@@ -278,34 +214,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "WHERE ora_rn > "
             "__[POSTCOMPILE_param_2]",
             checkparams={"param_1": 10, "param_2": 20},
-            dialect=tibero.TiberoDialect(
-                optimize_limits=True, enable_offset_fetch=False
-            ),
-        )
-
-    def test_simple_fetch(self):
-        # as of #8221, all FETCH / ROWS ONLY is using postcompile params;
-        # this is in the spirit of the ROWNUM approach where users reported
-        # that bound parameters caused performance degradation
-        t = table("sometable", column("col1"), column("col2"))
-        s = select(t)
-        s = select(t).fetch(10)
-        self.assert_compile(
-            s,
-            "SELECT sometable.col1, sometable.col2 FROM sometable "
-            "FETCH FIRST __[POSTCOMPILE_param_1] ROWS ONLY",
-            checkparams={"param_1": 10},
-        )
-
-    def test_simple_fetch_offset(self):
-        t = table("sometable", column("col1"), column("col2"))
-        s = select(t).fetch(10).offset(20)
-        self.assert_compile(
-            s,
-            "SELECT sometable.col1, sometable.col2 FROM sometable "
-            "OFFSET __[POSTCOMPILE_param_1] ROWS "
-            "FETCH FIRST __[POSTCOMPILE_param_2] ROWS ONLY",
-            checkparams={"param_1": 20, "param_2": 10},
+            dialect=oracle.OracleDialect(optimize_limits=True),
         )
 
     def test_limit_two(self):
@@ -313,33 +222,6 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         s = select(t).limit(10).offset(20).subquery()
 
         s2 = select(s.c.col1, s.c.col2)
-        self.assert_compile(
-            s2,
-            "SELECT anon_1.col1, anon_1.col2 FROM (SELECT sometable.col1 AS "
-            "col1, sometable.col2 AS col2 FROM sometable OFFSET "
-            "__[POSTCOMPILE_param_1] ROWS FETCH FIRST "
-            "__[POSTCOMPILE_param_2] ROWS ONLY) anon_1",
-            checkparams={"param_1": 20, "param_2": 10},
-        )
-
-        self.assert_compile(
-            s2,
-            "SELECT anon_1.col1, anon_1.col2 FROM (SELECT sometable.col1 AS "
-            "col1, sometable.col2 AS col2 FROM sometable OFFSET 20 "
-            "ROWS FETCH FIRST 10 ROWS ONLY) anon_1",
-            render_postcompile=True,
-        )
-        c = s2.compile(dialect=tibero.TiberoDialect())
-        eq_(len(c._result_columns), 2)
-        assert s.c.col1 in set(c._create_result_map()["col1"][1])
-
-    def test_limit_two_legacy(self):
-        t = table("sometable", column("col1"), column("col2"))
-        s = select(t).limit(10).offset(20).subquery()
-
-        s2 = select(s.c.col1, s.c.col2)
-
-        dialect = tibero.TiberoDialect(enable_offset_fetch=False)
         self.assert_compile(
             s2,
             "SELECT anon_1.col1, anon_1.col2 FROM "
@@ -354,7 +236,6 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "anon_2 "
             "WHERE ora_rn > __[POSTCOMPILE_param_2]) anon_1",
             checkparams={"param_1": 10, "param_2": 20},
-            dialect=dialect,
         )
 
         self.assert_compile(
@@ -370,9 +251,8 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "__[POSTCOMPILE_param_2]) "
             "anon_2 "
             "WHERE ora_rn > __[POSTCOMPILE_param_2]) anon_1",
-            dialect=dialect,
         )
-        c = s2.compile(dialect=dialect)
+        c = s2.compile(dialect=oracle.OracleDialect())
         eq_(len(c._result_columns), 2)
         assert s.c.col1 in set(c._create_result_map()["col1"][1])
 
@@ -380,22 +260,6 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         t = table("sometable", column("col1"), column("col2"))
 
         s = select(t).limit(10).offset(20).order_by(t.c.col2)
-        self.assert_compile(
-            s,
-            "SELECT sometable.col1, sometable.col2 FROM sometable "
-            "ORDER BY sometable.col2 OFFSET __[POSTCOMPILE_param_1] "
-            "ROWS FETCH FIRST __[POSTCOMPILE_param_2] ROWS ONLY",
-            checkparams={"param_1": 20, "param_2": 10},
-        )
-        c = s.compile(dialect=tibero.TiberoDialect())
-        eq_(len(c._result_columns), 2)
-        assert t.c.col1 in set(c._create_result_map()["col1"][1])
-
-    def test_limit_three_legacy(self):
-        t = table("sometable", column("col1"), column("col2"))
-
-        s = select(t).limit(10).offset(20).order_by(t.c.col2)
-        dialect = tibero.TiberoDialect(enable_offset_fetch=False)
         self.assert_compile(
             s,
             "SELECT anon_1.col1, anon_1.col2 FROM "
@@ -407,13 +271,12 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "__[POSTCOMPILE_param_1] + __[POSTCOMPILE_param_2]) anon_1 "
             "WHERE ora_rn > __[POSTCOMPILE_param_2]",
             checkparams={"param_1": 10, "param_2": 20},
-            dialect=dialect,
         )
-        c = s.compile(dialect=dialect)
+        c = s.compile(dialect=oracle.OracleDialect())
         eq_(len(c._result_columns), 2)
         assert t.c.col1 in set(c._create_result_map()["col1"][1])
 
-    def test_limit_four_legacy(self, legacy_tibero_limitoffset):
+    def test_limit_four(self):
         t = table("sometable", column("col1"), column("col2"))
 
         s = select(t).with_for_update().limit(10).order_by(t.c.col2)
@@ -427,7 +290,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             checkparams={"param_1": 10},
         )
 
-    def test_limit_four_firstrows_legacy(self):
+    def test_limit_four_firstrows(self):
         t = table("sometable", column("col1"), column("col2"))
 
         s = select(t).with_for_update().limit(10).order_by(t.c.col2)
@@ -440,24 +303,10 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "sometable.col2) anon_1 WHERE ROWNUM <= __[POSTCOMPILE_param_1] "
             "FOR UPDATE",
             checkparams={"param_1": 10},
-            dialect=tibero.TiberoDialect(
-                optimize_limits=True, enable_offset_fetch=False
-            ),
+            dialect=oracle.OracleDialect(optimize_limits=True),
         )
 
     def test_limit_five(self):
-        t = table("sometable", column("col1"), column("col2"))
-
-        s = select(t).with_for_update().limit(10).offset(20).order_by(t.c.col2)
-        self.assert_compile(
-            s,
-            "SELECT sometable.col1, sometable.col2 FROM sometable "
-            "ORDER BY sometable.col2 OFFSET __[POSTCOMPILE_param_1] ROWS "
-            "FETCH FIRST __[POSTCOMPILE_param_2] ROWS ONLY FOR UPDATE",
-            checkparams={"param_1": 20, "param_2": 10},
-        )
-
-    def test_limit_five_legacy(self, legacy_tibero_limitoffset):
         t = table("sometable", column("col1"), column("col2"))
 
         s = select(t).with_for_update().limit(10).offset(20).order_by(t.c.col2)
@@ -486,23 +335,6 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         )
         self.assert_compile(
             s,
-            "SELECT sometable.col1, sometable.col2 FROM sometable "
-            "ORDER BY sometable.col2 OFFSET :param_1 + :param_2 "
-            "ROWS FETCH FIRST __[POSTCOMPILE_param_3] ROWS ONLY",
-            checkparams={"param_1": 10, "param_2": 20, "param_3": 10},
-        )
-
-    def test_limit_six_legacy(self, legacy_tibero_limitoffset):
-        t = table("sometable", column("col1"), column("col2"))
-
-        s = (
-            select(t)
-            .limit(10)
-            .offset(literal(10) + literal(20))
-            .order_by(t.c.col2)
-        )
-        self.assert_compile(
-            s,
             "SELECT anon_1.col1, anon_1.col2 FROM (SELECT anon_2.col1 AS "
             "col1, anon_2.col2 AS col2, ROWNUM AS ora_rn FROM "
             "(SELECT sometable.col1 AS col1, sometable.col2 AS col2 "
@@ -512,7 +344,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             checkparams={"param_1": 10, "param_2": 10, "param_3": 20},
         )
 
-    def test_limit_special_quoting_legacy(self, legacy_tibero_limitoffset):
+    def test_limit_special_quoting(self):
         """Oracle-specific test for #4730.
 
         Even though this issue is generic, test the originally reported Oracle
@@ -672,9 +504,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "FROM mytable WHERE mytable.myid = :myid_1 FOR UPDATE OF table1",
         )
 
-    def test_for_update_of_w_limit_col_present_legacy(
-        self, legacy_tibero_limitoffset
-    ):
+    def test_for_update_of_w_limit_adaption_col_present(self):
         table1 = table("mytable", column("myid"), column("name"))
 
         self.assert_compile(
@@ -690,9 +520,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             checkparams={"param_1": 10, "myid_1": 7},
         )
 
-    def test_for_update_of_w_limit_col_unpresent_legacy(
-        self, legacy_tibero_limitoffset
-    ):
+    def test_for_update_of_w_limit_adaption_col_unpresent(self):
         table1 = table("mytable", column("myid"), column("name"))
 
         self.assert_compile(
@@ -707,25 +535,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "FOR UPDATE OF anon_1.name NOWAIT",
         )
 
-    def test_for_update_of_w_limit_offset_col_present(self):
-        table1 = table("mytable", column("myid"), column("name"))
-
-        self.assert_compile(
-            select(table1.c.myid, table1.c.name)
-            .where(table1.c.myid == 7)
-            .with_for_update(nowait=True, of=table1.c.name)
-            .limit(10)
-            .offset(50),
-            "SELECT mytable.myid, mytable.name FROM mytable "
-            "WHERE mytable.myid = :myid_1 OFFSET __[POSTCOMPILE_param_1] "
-            "ROWS FETCH FIRST __[POSTCOMPILE_param_2] ROWS ONLY "
-            "FOR UPDATE OF mytable.name NOWAIT",
-            checkparams={"param_1": 50, "param_2": 10, "myid_1": 7},
-        )
-
-    def test_for_update_of_w_limit_offset_col_present_legacy(
-        self, legacy_tibero_limitoffset
-    ):
+    def test_for_update_of_w_limit_offset_adaption_col_present(self):
         table1 = table("mytable", column("myid"), column("name"))
 
         self.assert_compile(
@@ -747,9 +557,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             checkparams={"param_1": 10, "param_2": 50, "myid_1": 7},
         )
 
-    def test_for_update_of_w_limit_offset_col_unpresent_legacy(
-        self, legacy_tibero_limitoffset
-    ):
+    def test_for_update_of_w_limit_offset_adaption_col_unpresent(self):
         table1 = table("mytable", column("myid"), column("name"))
 
         self.assert_compile(
@@ -770,9 +578,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             checkparams={"param_1": 10, "param_2": 50, "myid_1": 7},
         )
 
-    def test_for_update_of_w_limit_offset_partial_col_unpresent_legacy(
-        self, legacy_tibero_limitoffset
-    ):
+    def test_for_update_of_w_limit_offset_adaption_partial_col_unpresent(self):
         table1 = table("mytable", column("myid"), column("foo"), column("bar"))
 
         self.assert_compile(
@@ -795,25 +601,23 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             checkparams={"param_1": 10, "param_2": 50, "myid_1": 7},
         )
 
-    def test_limit_preserves_typing_information_legacy(self):
+    def test_limit_preserves_typing_information(self):
         class MyType(TypeDecorator):
             impl = Integer
             cache_ok = True
 
         stmt = select(type_coerce(column("x"), MyType).label("foo")).limit(1)
-        dialect = tibero.dialect(enable_offset_fetch=False)
+        dialect = oracle.dialect()
         compiled = stmt.compile(dialect=dialect)
         assert isinstance(compiled._create_result_map()["foo"][-2], MyType)
 
-    def test_use_binds_for_limits_disabled_one_legacy(self):
+    def test_use_binds_for_limits_disabled_one(self):
         t = table("sometable", column("col1"), column("col2"))
         with testing.expect_deprecated(
-            "The ``use_binds_for_limits`` Tibero dialect parameter is "
+            "The ``use_binds_for_limits`` Oracle dialect parameter is "
             "deprecated."
         ):
-            dialect = tibero.TiberoDialect(
-                use_binds_for_limits=False, enable_offset_fetch=False
-            )
+            dialect = oracle.OracleDialect(use_binds_for_limits=False)
 
         self.assert_compile(
             select(t).limit(10),
@@ -824,15 +628,13 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             dialect=dialect,
         )
 
-    def test_use_binds_for_limits_disabled_two_legacy(self):
+    def test_use_binds_for_limits_disabled_two(self):
         t = table("sometable", column("col1"), column("col2"))
         with testing.expect_deprecated(
-            "The ``use_binds_for_limits`` Tibero dialect parameter is "
+            "The ``use_binds_for_limits`` Oracle dialect parameter is "
             "deprecated."
         ):
-            dialect = tibero.TiberoDialect(
-                use_binds_for_limits=False, enable_offset_fetch=False
-            )
+            dialect = oracle.OracleDialect(use_binds_for_limits=False)
 
         self.assert_compile(
             select(t).offset(10),
@@ -844,15 +646,13 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             dialect=dialect,
         )
 
-    def test_use_binds_for_limits_disabled_three_legacy(self):
+    def test_use_binds_for_limits_disabled_three(self):
         t = table("sometable", column("col1"), column("col2"))
         with testing.expect_deprecated(
-            "The ``use_binds_for_limits`` Tibero dialect parameter is "
+            "The ``use_binds_for_limits`` Oracle dialect parameter is "
             "deprecated."
         ):
-            dialect = tibero.TiberoDialect(
-                use_binds_for_limits=False, enable_offset_fetch=False
-            )
+            dialect = oracle.OracleDialect(use_binds_for_limits=False)
 
         self.assert_compile(
             select(t).limit(10).offset(10),
@@ -866,15 +666,13 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             dialect=dialect,
         )
 
-    def test_use_binds_for_limits_enabled_one_legacy(self):
+    def test_use_binds_for_limits_enabled_one(self):
         t = table("sometable", column("col1"), column("col2"))
         with testing.expect_deprecated(
-            "The ``use_binds_for_limits`` Tibero dialect parameter is "
+            "The ``use_binds_for_limits`` Oracle dialect parameter is "
             "deprecated."
         ):
-            dialect = tibero.TiberoDialect(
-                use_binds_for_limits=True, enable_offset_fetch=False
-            )
+            dialect = oracle.OracleDialect(use_binds_for_limits=True)
 
         self.assert_compile(
             select(t).limit(10),
@@ -885,15 +683,13 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             dialect=dialect,
         )
 
-    def test_use_binds_for_limits_enabled_two_legacy(self):
+    def test_use_binds_for_limits_enabled_two(self):
         t = table("sometable", column("col1"), column("col2"))
         with testing.expect_deprecated(
-            "The ``use_binds_for_limits`` Tibero dialect parameter is "
+            "The ``use_binds_for_limits`` Oracle dialect parameter is "
             "deprecated."
         ):
-            dialect = tibero.TiberoDialect(
-                use_binds_for_limits=True, enable_offset_fetch=False
-            )
+            dialect = oracle.OracleDialect(use_binds_for_limits=True)
 
         self.assert_compile(
             select(t).offset(10),
@@ -906,15 +702,13 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             dialect=dialect,
         )
 
-    def test_use_binds_for_limits_enabled_three_legacy(self):
+    def test_use_binds_for_limits_enabled_three(self):
         t = table("sometable", column("col1"), column("col2"))
         with testing.expect_deprecated(
-            "The ``use_binds_for_limits`` Tibero dialect parameter is "
+            "The ``use_binds_for_limits`` Oracle dialect parameter is "
             "deprecated."
         ):
-            dialect = tibero.TiberoDialect(
-                use_binds_for_limits=True, enable_offset_fetch=False
-            )
+            dialect = oracle.OracleDialect(use_binds_for_limits=True)
 
         self.assert_compile(
             select(t).limit(10).offset(10),
@@ -934,7 +728,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         dialect = default.DefaultDialect()
         dialect.max_identifier_length = 30
 
-        ora_dialect = tibero.dialect(max_identifier_length=30)
+        ora_dialect = oracle.dialect(max_identifier_length=30)
 
         m = MetaData()
         a_table = Table(
@@ -1042,7 +836,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "EXISTS (select yay from foo where boo = "
             "lar)) AND mytable.myid = "
             "myothertable.otherid(+)",
-            dialect=tibero.TiberoDialect(use_ansi=False),
+            dialect=oracle.OracleDialect(use_ansi=False),
         )
 
     def test_outer_join_two(self):
@@ -1080,7 +874,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "WHERE thirdtable.userid(+) = "
             "myothertable.otherid AND mytable.myid = "
             "myothertable.otherid(+)",
-            dialect=tibero.dialect(use_ansi=False),
+            dialect=oracle.dialect(use_ansi=False),
         )
 
     def test_outer_join_four(self):
@@ -1099,7 +893,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "WHERE thirdtable.userid = "
             "myothertable.otherid AND mytable.myid = "
             "myothertable.otherid",
-            dialect=tibero.dialect(use_ansi=False),
+            dialect=oracle.dialect(use_ansi=False),
         )
 
     def test_outer_join_five(self):
@@ -1132,7 +926,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "anon_1 "
             "WHERE ora_rn > __[POSTCOMPILE_param_2]",
             checkparams={"param_1": 10, "param_2": 5},
-            dialect=tibero.dialect(use_ansi=False, enable_offset_fetch=False),
+            dialect=oracle.dialect(use_ansi=False),
         )
 
     def test_outer_join_six(self):
@@ -1159,7 +953,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "mytable LEFT OUTER JOIN myothertable ON "
             "mytable.myid = myothertable.otherid) "
             "anon_1 ON thirdtable.userid = anon_1.myid",
-            dialect=tibero.dialect(use_ansi=True),
+            dialect=oracle.dialect(use_ansi=True),
         )
 
         self.assert_compile(
@@ -1172,7 +966,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "WHERE mytable.myid = myothertable.otherid("
             "+)) anon_1 WHERE thirdtable.userid = "
             "anon_1.myid(+)",
-            dialect=tibero.dialect(use_ansi=False),
+            dialect=oracle.dialect(use_ansi=False),
         )
 
     def test_outer_join_seven(self):
@@ -1181,8 +975,8 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         q = select(table1.c.name).where(table1.c.name == "foo")
         self.assert_compile(
             q,
-            "SELECT mytable.name FROM mytable WHERE mytable.name = :name_1",
-            dialect=tibero.dialect(use_ansi=False),
+            "SELECT mytable.name FROM mytable WHERE " "mytable.name = :name_1",
+            dialect=oracle.dialect(use_ansi=False),
         )
 
     def test_outer_join_eight(self):
@@ -1199,7 +993,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "thirdtable.otherstuff FROM thirdtable "
             "WHERE thirdtable.otherstuff = "
             "mytable.name) AS bar FROM mytable",
-            dialect=tibero.dialect(use_ansi=False),
+            dialect=oracle.dialect(use_ansi=False),
         )
 
     def test_nonansi_plusses_everthing_in_the_condition(self):
@@ -1232,7 +1026,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "FROM mytable, myothertable WHERE mytable.myid = "
             "myothertable.otherid(+) AND myothertable.othername(+) > "
             ":othername_1 AND mytable.name = :name_1",
-            dialect=tibero.dialect(use_ansi=False),
+            dialect=oracle.dialect(use_ansi=False),
         )
 
         stmt = select(table1).select_from(
@@ -1251,7 +1045,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             "FROM mytable, myothertable WHERE mytable.myid = "
             "myothertable.otherid(+) AND myothertable.othername(+) IS NULL "
             "AND mytable.name IS NULL",
-            dialect=tibero.dialect(use_ansi=False),
+            dialect=oracle.dialect(use_ansi=False),
         )
 
     def test_nonansi_nested_right_join(self):
@@ -1265,7 +1059,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             select(j),
             "SELECT a.a, b.b, c.c FROM a, b, c "
             "WHERE a.a = b.b AND b.b = c.c",
-            dialect=tibero.TiberoDialect(use_ansi=False),
+            dialect=oracle.OracleDialect(use_ansi=False),
         )
 
         j = a.outerjoin(b.join(c, b.c.b == c.c.c), a.c.a == b.c.b)
@@ -1274,7 +1068,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             select(j),
             "SELECT a.a, b.b, c.c FROM a, b, c "
             "WHERE a.a = b.b(+) AND b.b = c.c",
-            dialect=tibero.TiberoDialect(use_ansi=False),
+            dialect=oracle.OracleDialect(use_ansi=False),
         )
 
         j = a.join(b.outerjoin(c, b.c.b == c.c.c), a.c.a == b.c.b)
@@ -1283,7 +1077,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             select(j),
             "SELECT a.a, b.b, c.c FROM a, b, c "
             "WHERE a.a = b.b AND b.b = c.c(+)",
-            dialect=tibero.TiberoDialect(use_ansi=False),
+            dialect=oracle.OracleDialect(use_ansi=False),
         )
 
     def test_alias_outer_join(self):
@@ -1333,7 +1127,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         )
         fn = func.lower(t1.c.c2, type_=String())
         stmt = t1.insert().values(c1=1).returning(fn, t1.c.c3)
-        compiled = stmt.compile(dialect=tibero.dialect())
+        compiled = stmt.compile(dialect=oracle.dialect())
         eq_(
             compiled._create_result_map(),
             {
@@ -1414,7 +1208,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         )
 
         with testing.expect_warnings(
-            "Computed columns don't work with Tibero UPDATE"
+            "Computed columns don't work with Oracle UPDATE"
         ):
             self.assert_compile(
                 t1.update().values(id=1, foo=5).returning(t1.c.bar),
@@ -1496,7 +1290,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         )
         self.assert_compile(
             schema.CreateTable(tbl2),
-            "CREATE TABLE testtbl2 (data INTEGER) COMPRESS FOR OLTP",
+            "CREATE TABLE testtbl2 (data INTEGER) " "COMPRESS FOR OLTP",
         )
 
     def test_create_index_bitmap_compress(self):
@@ -1550,9 +1344,9 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         )
         assert_raises_message(
             exc.CompileError,
-            r".*Tibero computed columns do not support 'stored' ",
+            r".*Oracle computed columns do not support 'stored' ",
             schema.CreateTable(t).compile,
-            dialect=tibero.dialect(),
+            dialect=oracle.dialect(),
         )
 
     def test_column_identity(self):
@@ -1609,7 +1403,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
     def test_column_identity_not_supported(self):
         m = MetaData()
         t = Table("t", m, Column("y", Integer, Identity(always=None)))
-        dd = tibero.TiberoDialect()
+        dd = oracle.OracleDialect()
         dd.supports_identity_columns = False
         self.assert_compile(
             schema.CreateTable(t),
@@ -1617,19 +1411,11 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
             dialect=dd,
         )
 
-    def test_double_to_tibero_double(self):
-        """test #5465"""
-        d1 = sqltypes.Double
-
-        self.assert_compile(
-            cast(column("foo"), d1), "CAST(foo AS DOUBLE PRECISION)"
-        )
-
 
 class SequenceTest(fixtures.TestBase, AssertsCompiledSQL):
     def test_basic(self):
         seq = Sequence("my_seq_no_schema")
-        dialect = tibero.TiberoDialect()
+        dialect = oracle.OracleDialect()
         assert (
             dialect.identifier_preparer.format_sequence(seq)
             == "my_seq_no_schema"
@@ -1650,15 +1436,13 @@ class SequenceTest(fixtures.TestBase, AssertsCompiledSQL):
             ddl.CreateSequence(
                 Sequence("my_seq", nomaxvalue=True, nominvalue=True)
             ),
-            "CREATE SEQUENCE my_seq NOMINVALUE NOMAXVALUE",
-            dialect=tibero.TiberoDialect(),
+            "CREATE SEQUENCE my_seq START WITH 1 NOMINVALUE NOMAXVALUE",
+            dialect=oracle.OracleDialect(),
         )
 
 
 class RegexpTest(fixtures.TestBase, testing.AssertsCompiledSQL):
-    # 이 부분은 TiberoDialect의 name가 일치하면 안됩니다. __dialect__는 사용할 TiberoDialect
-    # 위치를 찾기 위해 사용되는 변수이기 때문입니다.
-    __dialect__ = "tibero"
+    __dialect__ = "oracle"
 
     def setup_test(self):
         self.table = table(
@@ -1782,9 +1566,7 @@ class RegexpTest(fixtures.TestBase, testing.AssertsCompiledSQL):
 
 
 class TableValuedFunctionTest(fixtures.TestBase, testing.AssertsCompiledSQL):
-    # 이 부분은 TiberoDialect의 name가 일치하면 안됩니다. __dialect__는 사용할 TiberoDialect
-    # 위치를 찾기 위해 사용되는 변수이기 때문입니다.
-    __dialect__ = "tibero"
+    __dialect__ = "oracle"
 
     def test_scalar_alias_column(self):
         fn = func.scalar_strings(5)

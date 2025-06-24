@@ -13,15 +13,12 @@ import pyodbc
 from sqlalchemy import util
 from sqlalchemy import func
 from sqlalchemy.engine import interfaces
-from sqlalchemy.engine import processors
-from sqlalchemy.engine.interfaces import DBAPIConnection
-from sqlalchemy.engine.interfaces import IsolationLevel
+from sqlalchemy import processors
 from sqlalchemy import exc
 from sqlalchemy.connectors.pyodbc import PyODBCConnector
 from sqlalchemy.sql import sqltypes
-from sqlalchemy.sql.compiler import InsertmanyvaluesSentinelOpts
 
-from . import types
+from . import base as tibero
 from .base import TiberoExecutionContext, TiberoDialect, TiberoCompiler
 
 # 1. SQLAlchemy는 자체적인 풀링 메커니즘을 가지고 있기 때문에, PyODBC의 풀링 기능을 비활성화하는
@@ -85,29 +82,16 @@ class _TiberoNumeric(sqltypes.Numeric):
             return processors.to_float
 
 
-class _TiberoUUID(sqltypes.Uuid):
-    pass
-
-    # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
-    # 사용해야 할지 자세히 조사를 못했기 때문입니다.
-    # def get_dbapi_type(self, dbapi):
-    #     return dbapi.STRING
-
-
 class _TiberoBinaryFloat(_TiberoNumeric):
-    pass
-
-    # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
-    # 사용해야 할지 자세히 조사를 못했기 때문입니다.
-    # def get_dbapi_type(self, dbapi):
-    #     return dbapi.NATIVE_FLOAT
+    def get_dbapi_type(self, dbapi):
+        return dbapi.NATIVE_FLOAT
 
 
-class _TiberoBINARY_FLOAT(_TiberoBinaryFloat, types.BINARY_FLOAT):
+class _TiberoBINARY_FLOAT(_TiberoBinaryFloat, tibero.BINARY_FLOAT):
     pass
 
 
-class _TiberoBINARY_DOUBLE(_TiberoBinaryFloat, types.BINARY_DOUBLE):
+class _TiberoBINARY_DOUBLE(_TiberoBinaryFloat, tibero.BINARY_DOUBLE):
     pass
 
 
@@ -115,7 +99,7 @@ class _TiberoNUMBER(_TiberoNumeric):
     is_number = True
 
 
-class _PYODBCTiberoDate(types._TiberoDate):
+class _PYODBCTiberoDate(sqltypes.Date):
     def bind_processor(self, dialect):
         return None
 
@@ -132,31 +116,9 @@ class _PYODBCTiberoDate(types._TiberoDate):
         return dbapi.SQL_TYPE_DATE
 
 
-class _PYODBCTiberoDateTime(types.DATE):
+class _PYODBCTiberoDateTime(tibero.DATE):
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_TYPE_DATE
-
-
-class _PYODBCTiberoTIMESTAMP(
-    types._TiberoDateLiteralRender, sqltypes.TIMESTAMP
-):
-    def literal_processor(self, dialect):
-        return self._literal_processor_datetime(dialect)
-
-    def bind_processor(self, dialect):
-        def process(value):
-            if value is not None:
-                return str(value)
-            return value
-
-        return process
-
-    def get_dbapi_type(self, dbapi):
-        return dbapi.SQL_TYPE_TIMESTAMP
-
-
-class _LOBDataType:
-    pass
 
 
 # TODO: the names used across CHAR / VARCHAR / NCHAR / NVARCHAR
@@ -171,7 +133,7 @@ class _TiberoNChar(sqltypes.NCHAR):
         return dbapi.SQL_WCHAR
 
 
-class _TiberoUnicodeStringNCHAR(types.NVARCHAR2):
+class _TiberoUnicodeStringNCHAR(tibero.NVARCHAR2):
     pass
 
     # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
@@ -189,7 +151,7 @@ class _TiberoUnicodeStringCHAR(sqltypes.Unicode):
     #     return dbapi.LONG_STRING
 
 
-class _TiberoUnicodeTextNCLOB(_LOBDataType, types.NCLOB):
+class _TiberoUnicodeTextNCLOB(tibero.NCLOB):
     pass
 
     # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
@@ -201,17 +163,17 @@ class _TiberoUnicodeTextNCLOB(_LOBDataType, types.NCLOB):
     #     return dbapi.DB_TYPE_NVARCHAR
 
 
-class _TiberoUnicodeTextCLOB(_LOBDataType, sqltypes.UnicodeText):
+class _TiberoUnicodeTextCLOB(sqltypes.UnicodeText):
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_WLONGVARCHAR
 
 
-class _TiberoText(_LOBDataType, sqltypes.Text):
+class _TiberoText(sqltypes.Text):
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_WLONGVARCHAR
 
 
-class _TiberoLong(_LOBDataType, types.LONG):
+class _TiberoLong(tibero.LONG):
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_WLONGVARCHAR
 
@@ -233,7 +195,7 @@ class _TiberoEnum(sqltypes.Enum):
         return process
 
 
-class _TiberoBinary(_LOBDataType, sqltypes.LargeBinary):
+class _TiberoBinary(sqltypes.LargeBinary):
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_LONGVARBINARY
 
@@ -250,7 +212,7 @@ class _TiberoBinary(_LOBDataType, sqltypes.LargeBinary):
         return None
 
 
-class _TiberoInterval(types.INTERVAL):
+class _TiberoInterval(tibero.INTERVAL):
     def bind_processor(self, dialect):
         def process(value: datetime.timedelta) -> str:
             # timedelta에서 days, seconds, microseconds 추출
@@ -303,11 +265,11 @@ class _TiberoInterval(types.INTERVAL):
         return dbapi.SQL_INTERVAL_DAY_TO_SECOND
 
 
-class _TiberoRaw(types.RAW):
+class _TiberoRaw(tibero.RAW):
     pass
 
 
-class _TiberoRowid(types.ROWID):
+class _TiberoRowid(tibero.ROWID):
     pass
 
     # 아래 코드를 주석처리한 이유는 시간이 부족해 bind parameter에 어떤 타입을
@@ -340,7 +302,7 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     statement_compiler = TiberoCompiler_pyodbc
 
     # Tibero pyodbc에서는 pyodbc execute()는 select, insert, update,
-    # delete문ㅇ에 대해 cursor.rowcount가 정상적으로 작동하는 것을 확인했습니다.
+    # delete문에 대해 cursor.rowcount가 정상적으로 작동하는 것을 확인했습니다.
     supports_sane_rowcount = True
     # Tibero pyodbc에서는 executemany()를 실행할 때 select, insert, update,
     # delete문에 대해 cursor.rowcount가 정상적으로 작동하지 않는 것을 확인했습니다.
@@ -359,39 +321,39 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     update_executemany_returning = False
     delete_executemany_returning = False
 
-    bind_typing = interfaces.BindTyping.SETINPUTSIZES
+    # TAG: 1.4 2.0 차이
+    # 1.4에는 다음 내용이 없음
+    # bind_typing = interfaces.BindTyping.SETINPUTSIZES
 
     pyodbc_driver_name = "Tibero"
 
     colspecs = util.update_copy(
         TiberoDialect.colspecs,
         {
-            sqltypes.TIMESTAMP: _PYODBCTiberoTIMESTAMP,
             sqltypes.Numeric: _TiberoNumeric,
             sqltypes.Float: _TiberoNumeric,
-            types.BINARY_FLOAT: _TiberoBINARY_FLOAT,
-            types.BINARY_DOUBLE: _TiberoBINARY_DOUBLE,
+            tibero.BINARY_FLOAT: _TiberoBINARY_FLOAT,
+            tibero.BINARY_DOUBLE: _TiberoBINARY_DOUBLE,
             sqltypes.Integer: _TiberoInteger,
-            types.NUMBER: _TiberoNUMBER,
+            tibero.NUMBER: _TiberoNUMBER,
             sqltypes.Date: _PYODBCTiberoDate,
             sqltypes.DateTime: _PYODBCTiberoDateTime,
             sqltypes.LargeBinary: _TiberoBinary,
-            sqltypes.Boolean: types._TiberoBoolean,
+            sqltypes.Boolean: tibero._TiberoBoolean,
             sqltypes.Interval: _TiberoInterval,
-            types.INTERVAL: _TiberoInterval,
+            tibero.INTERVAL: _TiberoInterval,
             sqltypes.Text: _TiberoText,
             sqltypes.String: _TiberoString,
             sqltypes.UnicodeText: _TiberoUnicodeTextCLOB,
             sqltypes.CHAR: _TiberoChar,
             sqltypes.NCHAR: _TiberoNChar,
             sqltypes.Enum: _TiberoEnum,
-            types.LONG: _TiberoLong,
-            types.RAW: _TiberoRaw,
+            tibero.LONG: _TiberoLong,
+            tibero.RAW: _TiberoRaw,
             sqltypes.Unicode: _TiberoUnicodeStringCHAR,
             sqltypes.NVARCHAR: _TiberoUnicodeStringNCHAR,
-            sqltypes.Uuid: _TiberoUUID,
-            types.NCLOB: _TiberoUnicodeTextNCLOB,
-            types.ROWID: _TiberoRowid,
+            tibero.NCLOB: _TiberoUnicodeTextNCLOB,
+            tibero.ROWID: _TiberoRowid,
         },
     )
     #####################
@@ -418,9 +380,12 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
     # 여러 parameter를 사용해 한번의 통신을 한 것을 의미합니다.
     supports_multivalues_insert = True
     use_insertmanyvalues = True
-    insertmanyvalues_implicit_sentinel = (
-        InsertmanyvaluesSentinelOpts.AUTOINCREMENT
-    )
+
+    # TAG: 1.4 2.0 차이
+    # 1.4에는 다음 옵션 미존재
+    # insertmanyvalues_implicit_sentinel = (
+    #     InsertmanyvaluesSentinelOpts.AUTOINCREMENT
+    # )
 
     #############################
     #### End Of  New Section ####
@@ -455,8 +420,8 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             self.colspecs[sqltypes.UnicodeText] = _TiberoUnicodeTextNCLOB
 
     def get_isolation_level(
-        self, dbapi_connection: DBAPIConnection
-    ) -> IsolationLevel:
+        self, dbapi_connection
+    ):
         # general idea of transaction id, have to start one, etc.
         # https://stackoverflow.com/questions/10711204/how-to-check-isoloation-level
 
@@ -520,8 +485,8 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
 
     def set_isolation_level(
         self,
-        dbapi_connection: interfaces.DBAPIConnection,
-        level: IsolationLevel,
+        dbapi_connection,
+        level,
     ) -> None:
         if level == "AUTOCOMMIT":
             dbapi_connection.autocommit = True
@@ -553,6 +518,84 @@ class TiberoDialect_pyodbc(PyODBCConnector, TiberoDialect):
             conn.setdecoding(pyodbc.SQL_WCHAR, encoding=self.wchar_encoding)
 
         return on_connect
+
+    def create_connect_args(self, url):
+        opts = url.translate_connect_args(username="user")
+        opts.update(url.query)
+
+        keys = opts
+
+        query = url.query
+
+        connect_args = {}
+        for param in ("ansi", "unicode_results", "autocommit"):
+            if param in keys:
+                connect_args[param] = util.asbool(keys.pop(param))
+
+        if "odbc_connect" in keys:
+            connectors = [util.unquote_plus(keys.pop("odbc_connect"))]
+        else:
+
+            def check_quote(token):
+                if ";" in str(token) or str(token).startswith("{"):
+                    token = "{%s}" % token.replace("}", "}}")
+                return token
+
+            keys = dict((k, check_quote(v)) for k, v in keys.items())
+
+            dsn_connection = "dsn" in keys or (
+                "host" in keys and "database" not in keys
+            )
+            if dsn_connection:
+                connectors = [
+                    "dsn=%s" % (keys.pop("host", "") or keys.pop("dsn", ""))
+                ]
+            else:
+                connectors = []
+                driver = keys.pop("driver", self.pyodbc_driver_name)
+                if driver is None and keys:
+                    # note if keys is empty, this is a totally blank URL
+                    util.warn(
+                        "No driver name specified; "
+                        "this is expected by PyODBC when using "
+                        "DSN-less connections"
+                    )
+                else:
+                    connectors.append("DRIVER={%s}" % driver)
+
+                connectors.extend(
+                    [
+                        "Server=%s" % (keys.pop("host", "")),
+                        "Port=%s" % (keys.pop("port", "")),
+                        "Database=%s" % keys.pop("database", ""),
+                    ]
+                )
+
+            user = keys.pop("user", None)
+            if user:
+                connectors.append("UID=%s" % user)
+                pwd = keys.pop("password", "")
+                if pwd:
+                    connectors.append("PWD=%s" % pwd)
+            else:
+                authentication = keys.pop("authentication", None)
+                if authentication:
+                    connectors.append("Authentication=%s" % authentication)
+                else:
+                    connectors.append("Trusted_Connection=Yes")
+
+            # if set to 'Yes', the ODBC layer will try to automagically
+            # convert textual data from your database encoding to your
+            # client encoding.  This should obviously be set to 'No' if
+            # you query a cp1253 encoded database from a latin1 client...
+            if "odbc_autotranslate" in keys:
+                connectors.append(
+                    "AutoTranslate=%s" % keys.pop("odbc_autotranslate")
+                )
+
+            connectors.extend(["%s=%s" % (k, v) for k, v in keys.items()])
+
+        return [[";".join(connectors)], connect_args]
 
 
 dialect = TiberoDialect_pyodbc

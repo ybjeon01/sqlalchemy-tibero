@@ -1,46 +1,30 @@
-# sqlalchemy_tibero/__init__.py
-# Copyright (C) 2024-2024 the Tibero authors and contributors
-# <see AUTHORS file>
-#
-# This module is part of SQLAlchemy Tibero Dialect and is released under
-# the MIT License: https://www.opensource.org/licenses/mit-license.php
-# mypy: ignore-errors
-from .base import DOUBLE_PRECISION
-from .base import REAL
-from sqlalchemy.sql.sqltypes import BLOB
-from sqlalchemy.sql.sqltypes import CHAR
-from sqlalchemy.sql.sqltypes import CLOB
-from sqlalchemy.sql.sqltypes import NCHAR
-from sqlalchemy.sql.sqltypes import NVARCHAR
-from sqlalchemy.sql.sqltypes import VARCHAR
-
 from . import base  # noqa
-from . import pyodbc
+from . import pyodbc  # noqa
 from .base import BFILE
 from .base import BINARY_DOUBLE
 from .base import BINARY_FLOAT
+from .base import BLOB
+from .base import CHAR
+from .base import CLOB
 from .base import DATE
+from .base import DOUBLE_PRECISION
 from .base import FLOAT
 from .base import INTERVAL
 from .base import LONG
+from .base import NCHAR
 from .base import NCLOB
 from .base import NUMBER
+from .base import NVARCHAR
 from .base import NVARCHAR2
 from .base import RAW
 from .base import ROWID
 from .base import TIMESTAMP
+from .base import VARCHAR
 from .base import VARCHAR2
 
-# TODO: 비동기 프로그램밍 지원하기
-# Alias oracledb also as oracledb_async
-# oracledb_async = type(
-#     "oracledb_async", (ModuleType,), {"dialect": oracledb.dialect_async}
-# )
 
+base.dialect = dialect = pyodbc.dialect
 
-base.dialect = dialect = pyodbc.TiberoDialect_pyodbc
-
-# TODO: 티베로에서 지원안되는 타입들이 있는지 확인해보기
 __all__ = (
     "VARCHAR",
     "NVARCHAR",
@@ -64,10 +48,9 @@ __all__ = (
     "VARCHAR2",
     "NVARCHAR2",
     "ROWID",
-    "REAL",
 )
 
-__version__ = "2.0.0"
+__version__ = "1.4.54"
 
 # TODO: 내가 (전영배)가 알기로는 setup.py에 다음의 라인을 추가하면 자동으로 register되는 것으로 알고 있습니다.
 #         entry_points = {

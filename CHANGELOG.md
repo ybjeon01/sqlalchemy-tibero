@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.2] - 2025-11-07
+
+### Added
+- Tibero의 Binary Double과 Binary Float 지원
+
 ## [2.0.1] - 2024-11-10
 
 ### Added
@@ -51,7 +56,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 - setinputsizes 사용할때 올바른 타입으로 연결, 77b227141a
-  - 지금까지는 setupinputsizes 자체를 사용안했습니다.
+- 지금까지는 setupinputsizes 자체를 사용안했습니다.
 - test/test_types.py 파일 추가, cda729d8a7
 ### Changed
 - 데이터베이스에서 메타 정보를 얻을 때 Number(38, 0)이 sqlalchemy에서 Integer로 사용되도록 결정, d1254515c2

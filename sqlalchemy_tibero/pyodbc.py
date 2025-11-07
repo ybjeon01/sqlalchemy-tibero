@@ -297,7 +297,21 @@ class _TiberoInterval(types.INTERVAL):
                 microseconds=microseconds,
             )
 
+        def binary_float_handler(dto: bytes):
+            """
+            BINARY_FLOAT (4 bytes, Big Endian IEEE 754) to Python float
+            """
+            return dto
+
+        def binary_double_handler(dto: bytes):
+            """
+            BINARY_DOUBLE (8 bytes, Big Endian IEEE 754) to Python double
+            """
+            return dto
+
         conn.add_output_converter(pyodbc.SQL_INTERVAL_DAY_TO_SECOND, handler)
+        conn.add_output_converter(56, binary_float_handler)
+        conn.add_output_converter(57, binary_double_handler)
 
     def get_dbapi_type(self, dbapi):
         return dbapi.SQL_INTERVAL_DAY_TO_SECOND

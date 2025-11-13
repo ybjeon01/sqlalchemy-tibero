@@ -259,7 +259,7 @@ class _TiberoInterval(tibero.INTERVAL):
                 microseconds=microseconds,
             )
 
-	def binary_float_handler(dto: bytes):
+        def binary_float_handler(dto: bytes):
             """
             BINARY_FLOAT (4 bytes, Big Endian IEEE 754) to Python float
             """
